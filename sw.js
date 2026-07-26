@@ -1,6 +1,6 @@
 /* WarrantDesk service worker — cache-first shell, network-only data.
    Bump CACHE_VERSION on every release so users get updates immediately. */
-const CACHE_VERSION = 'warrantdesk-v2';
+const CACHE_VERSION = 'warrantdesk-v6';
 const SHELL = ['./', './index.html', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {

@@ -258,7 +258,8 @@ canvas{width:100%;display:block}
   <button class="nav" data-page="settings"><span class="ico">⚙</span> Settings</button>
   <div class="sidefoot"><b>Process discipline</b>
   Score the week → pick ONE core warrant → plan entry/stop/target before Monday → post-mortem Friday.
-  <div style="margin-top:8px;font-size:11px;color:var(--ink3)">Warrants can expire worthless. Analysis tool — not financial advice.</div></div>
+  <div style="margin-top:8px;font-size:11px;color:var(--ink3)">Warrants can expire worthless. Analysis tool — not financial advice.</div>
+  <div style="margin-top:6px;font-size:10px;color:var(--ink3)" id="side-ver">v–</div></div>
 </aside>
 
 <!-- ================= MAIN ================= -->
@@ -305,7 +306,7 @@ canvas{width:100%;display:block}
 
     <div class="grid g2e" style="margin-bottom:16px">
       <div class="card">
-        <h3>☀ Morning Briefing <span class="right"><span class="tag grey" id="brief-time"></span></span></h3>
+        <h3>☀ Morning Briefing <span class="right"><button class="btn sm ghost" id="brief-gen">↻ Update now</button><span class="tag grey" id="brief-time"></span></span></h3>
         <div class="brief" id="brief"></div>
       </div>
       <div class="card">
@@ -360,11 +361,23 @@ canvas{width:100%;display:block}
       </div>
     </div>
     <div class="card" style="margin-bottom:16px">
+      <h3>🔁 Mid-week regime check <span class="sub">re-scores the fast factors (US/Fed + Sector) vs this week's baseline</span>
+        <span class="right"><button class="btn sm" id="mw-run">Run check</button></span></h3>
+      <div class="why" id="mw-out">Runs automatically after Wednesday's HK close when you hold a position — or press Run check anytime. It compares the two fastest-moving factors against Sunday/Monday's score and calls HOLD / CUT HALF / FLIP with a live exit price.</div>
+      <div class="row" style="margin-top:10px;align-items:flex-end">
+        <div class="fld">Flip-trigger level (HSI)<input type="number" id="mw-flip" placeholder="e.g. 25050"></div>
+        <div class="fld">Fires when price is<select id="mw-flipdir"><option value="below">below</option><option value="above">above</option></select></div>
+        <button class="btn sm ghost" id="mw-flipsave">Set alert</button>
+        <span class="note" id="mw-flipnote" style="margin:0"></span>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
       <h3>Week plan & catalysts <span class="sub">edit freely — shown in briefing</span></h3>
       <textarea id="plan" style="width:100%;min-height:120px;line-height:1.6"></textarea>
     </div>
     <div class="card">
-      <h3>📜 Strategy History <span class="sub">every generated strategy, timestamped with its evidence</span></h3>
+      <h3>📜 Strategy History <span class="sub">every generated forecast, timestamped with evidence</span>
+        <span class="right"><button class="btn sm ghost" id="flog-csv">⬇ Forecast log CSV</button></span></h3>
       <div id="strat-history"></div>
     </div>
   </section>
@@ -524,6 +537,11 @@ canvas{width:100%;display:block}
         <div class="row" style="margin-top:8px"><button class="btn sm" id="set-ohlc-save">Save OHLC</button></div>
       </div>
     </div>
+    <div class="card" style="margin-top:16px">
+      <h3>Version &amp; Changelog <span class="right"><span class="tag purple" id="ver-badge" style="font-size:13px">v–</span></span></h3>
+      <div class="note" id="ver-line" style="margin-bottom:10px"></div>
+      <div style="overflow-x:auto"><table id="changelog-table"></table></div>
+    </div>
   </section>
 </main>
 </div>
@@ -594,14 +612,43 @@ const todayISO=()=>new Date().toISOString().slice(0,10);
 const parseNum=s=>{if(s==null)return NaN;return parseFloat((''+s).replace(/[,%]/g,''));};
 
 /* ---------------- default / seed state ---------------- */
-const FACTORS=[
- {k:'china', label:'China macro & policy', w:25},
- {k:'us',    label:'US market & Fed/rates', w:20},
- {k:'tech',  label:'HSI technicals', w:20},
- {k:'sect',  label:'Sector heavyweights', w:15},
- {k:'flow',  label:'Flows & sentiment', w:10},
- {k:'event', label:'Event risk (coming week)', w:10},
-];
+/* ================================================================
+   ALGO KERNEL — every tunable algorithm lives here, behind a stable contract.
+   To change how the desk thinks, you edit ONLY this object (+ its helper fns).
+   See the "Algorithm authoring guide" doc. Contracts:
+     factors[].score(ctx) -> {score:-2..2, ev:[str], sources:[[label,url]]}  (may be async; null = "skip / keep prior")
+     rank(warrant, rc)    -> {score, notes:[], flags:[], reqIdx, wks, otm, spreadPc}   rc = {px, reqW, wr}
+     price(w, idxLevel, daysFwd) -> number      (simulator pricing model)
+     levels(ctx)          -> {upper, lower, res:[], sup:[], p}   (S/R model)
+   ================================================================ */
+const ALGO={
+  factors:[
+    {key:'china', label:'China macro & policy',      weight:25, score:(ctx)=>factorChina(ctx)},
+    {key:'us',    label:'US market & Fed/rates',     weight:20, score:(ctx)=>factorUS(ctx)},
+    {key:'tech',  label:'HSI technicals',            weight:20, score:(ctx)=>factorTech(ctx)},
+    {key:'sect',  label:'Sector heavyweights',       weight:15, score:(ctx)=>factorSect(ctx)},
+    {key:'flow',  label:'Flows & sentiment',         weight:10, score:(ctx)=>factorFlow(ctx)},
+    {key:'event', label:'Event risk (coming week)',  weight:10, score:(ctx)=>factorEvent(ctx)},
+  ],
+  verdictBands:{noTrade:3, full:5},                 // |conviction| < noTrade = stand aside; > full = full size
+  rankWeights:{feasibility:30, moneyness:25, expiry:20, responsiveness:10, spread:8, theta:7}, // component maxima (edit rankOne to reweight)
+  rank:(w,rc)=>rankOne(w,rc),
+  price:(w,idxLevel,daysFwd)=>priceModel(w,idxLevel,daysFwd),
+  levels:(ctx)=>levelModel(ctx),
+};
+// Back-compat shim: the rest of the app reads FACTORS as [{k,label,w}] — derive it from the kernel so nothing else changes.
+const FACTORS=ALGO.factors.map(f=>({k:f.key,label:f.label,w:f.weight}));
+// Market context — the ONLY input the scoring algorithms should read (mirrors state; swap this to backtest historical data).
+function buildCtx(){return {ohlc:state.ohlc, live:state.live, news:state.news, calendar:state.calendar,
+  warrants:state.warrants, settings:state.settings, today:todayISO()};}
+// Factor score adapters — each wraps a scorer + attaches evidence sources. Return null to skip (keeps prior score).
+function factorTech(ctx){const t=autoTech(ctx);return t?{score:t.score,ev:t.ev,sources:[SRC.hsi(),SRC.yahoo()]}:null;}
+async function factorUS(ctx){try{const u=await autoUS(ctx);return {score:u.score,ev:u.ev,sources:[['Yahoo — S&P 500','https://finance.yahoo.com/quote/%5EGSPC/'],['Yahoo — VIX','https://finance.yahoo.com/quote/%5EVIX/']]};}
+  catch(e){return {score:0,ev:['US quote fetch failed — scored neutral, set manually if you know the close'],sources:[SRC.yahoo()]};}}
+function factorChina(ctx){const cn=scanNews(['china']);return cn?{score:cn.score,ev:['news sentiment ('+(cn.pos||0)+' pos / '+(cn.neg||0)+' neg keywords): '+cn.hits.slice(0,4).join(', ')],sources:[SRC.mqnews(),SRC.tecal()]}:{score:0,ev:['no news cached — neutral; refresh or score manually'],sources:[SRC.mqnews(),SRC.tecal()]};}
+function factorSect(ctx){const se=scanNews(['sect']);return se?{score:se.score,ev:['heavyweight-sector news sentiment: '+se.hits.slice(0,4).join(', ')],sources:[SRC.mqnews()]}:{score:0,ev:['no news cached — neutral'],sources:[SRC.mqnews()]};}
+function factorFlow(ctx){const fl=autoFlows(ctx);return fl?{score:fl.score,ev:fl.ev,sources:[SRC.hsi()]}:null;}
+function factorEvent(ctx){const evt=autoEvent(ctx);return {score:evt.score,ev:evt.ev,sources:[SRC.hkex(),SRC.tecal(),SRC.mqnews()]};}
 const SEED_OHLC=[
  {d:'2026-06-29',o:22827.65,h:23183.17,l:22783.64,c:23026.68},
  {d:'2026-06-30',o:23007.87,h:23086.85,l:22685.14,c:22881.02},
@@ -631,7 +678,7 @@ const SEED_PLAN=`WEEK 13–17 JUL 2026 · verdict LONG (+4.0, staggered)
 • Aggressive alt: CWQ6 half-size only on CPI+GDP double-beat. Watch AI lockup-expiry supply on HK tech.`;
 
 function defaultState(){return {
-  schemaVersion:8,
+  schemaVersion:10,
   activeWarrant:null,
   settings:{capital:5000,target:1000,brokerage:10,refreshSec:60,mode:'auto',
     proxies:['https://corsproxy.io/?url=','https://api.allorigins.win/raw?url=','https://api.codetabs.com/v1/proxy?quest='],
@@ -643,11 +690,13 @@ function defaultState(){return {
   validation:{days:[]},
   strategies:[], flocks:{},
   slotRecords:[], premarket:null,
+  flip:{level:null,dir:'below',setAt:null,firedD:null},
+  outlook:null, extNarrative:null,
   live:{px:24238,chg:80,pchg:'+0.33%',stime:'2026-07-11 03:02 (seed)',src:'seed'},
   ohlc:SEED_OHLC.slice(),
   factors:{china:1,us:1,tech:1,sect:1,flow:1,event:-1},
   fnotes:{china:'Q2 GDP + June activity Wed; exports resilient, consumption soft',us:'US green Fri, VIX 15; CPI Tue is swing risk',tech:'Uptrend from 22,518; 24,000 defended; 24,500 cap',sect:'Rotation into Tencent/Meituan vs AI lockup supply',flow:'Southbound net buying sustained',event:'CPI + China GDP back-to-back; lockups'},
-  plan:SEED_PLAN,
+  plan:'',   // free-text "your notes"; the headline plan is now the auto Weekly Outlook + Daily Plan
   warrants:SEED_WARRANTS.slice(),
   wuTime:'seed data · 10 Jul 26 16:30 MYT',
   watchlist:['0652SI','0652R5'],
@@ -693,6 +742,16 @@ try{
   if(state.schemaVersion<8){ // v7 -> v8: pinned active warrant for header ticker
     if(!('activeWarrant' in state))state.activeWarrant=null;
     state.schemaVersion=8;
+  }
+  if(state.schemaVersion<9){ // v8 -> v9: mid-week flip trigger (R2)
+    if(!state.flip)state.flip={level:null,dir:'below',setAt:null,firedD:null};
+    state.schemaVersion=9;
+  }
+  if(state.schemaVersion<10){ // v9 -> v10: auto Weekly Outlook + Daily Plan
+    if(!('outlook' in state))state.outlook=null;
+    if(!('extNarrative' in state))state.extNarrative=null;
+    if(state.plan===SEED_PLAN)state.plan='';   // retire the old static week plan; keep any custom notes
+    state.schemaVersion=10;
   }
 }catch(e){state=defaultState();}
 let syncT=null;
@@ -990,6 +1049,8 @@ async function refreshAll(manual){
   try{await fetchCalendar();}catch(e){}
   // P5: pull server-side cron ticks and backfill any slots missed while all devices were closed
   try{const tk=await fetchTicks();const nb=backfillSlots(tk);if(nb&&manual)snack('↻ Backfilled '+nb+' slot record'+(nb>1?'s':'')+' from Worker cron');}catch(e){}
+  // R4: pull cron warrant-matrix snapshots; seed term sheets if the app was closed at snapshot time
+  try{const mx=await fetchMatrix();applyMatrix(mx);}catch(e){}
   loader(100,failed.length?'Done — '+failed.join(', ')+' failed':'All feeds updated ✓');
   checkMarket();checkAlerts();
   save();renderAll();updateFresh();
@@ -999,8 +1060,8 @@ async function refreshAll(manual){
 }
 
 /* ---------------- S/R levels ---------------- */
-function pivots(){
-  const h=state.ohlc;if(h.length<6)return null;
+function pivots(ctx){
+  const h=(ctx&&ctx.ohlc)||state.ohlc;if(h.length<6)return null;
   let idx=h.length-1;
   if(h[idx].d===todayISO()&&idx>=6)idx--;   // pivots come from the last COMPLETED session, not today's partial candle
   const day=h[idx];
@@ -1015,13 +1076,15 @@ function pivots(){
     lastDate:day.d,
   };
 }
-function watchLevels(){
-  const p=pivots();if(!p)return null;
-  const px=state.live.px;
+// ALGO.levels — S/R model. Edit here to change how support/resistance is derived.
+function levelModel(ctx){
+  const p=pivots(ctx);if(!p)return null;
+  const px=(ctx&&ctx.live?ctx.live.px:state.live.px);
   const res=[['Swing high (10d)',p.swingH],['Day R2',p.dayR2],['Day R1',p.dayR1],['Weekly R1',p.wkR1],['Week high',p.wH]].filter(x=>x[1]>px).sort((a,b)=>a[1]-b[1]);
   const sup=[['Swing low (10d)',p.swingL],['Day S2',p.dayS2],['Day S1',p.dayS1],['Weekly pivot',p.wkP],['Week low',p.wL]].filter(x=>x[1]<px).sort((a,b)=>b[1]-a[1]);
   return {upper:res[0]||null,lower:sup[0]||null,res,sup,p};
 }
+function watchLevels(){return ALGO.levels(buildCtx());}   // public API — unchanged behaviour, logic now in the kernel
 
 /* ---------------- strategy score ---------------- */
 function wt(k){const w=state.settings.weights||{};const f=FACTORS.find(x=>x.k===k);return w[k]!=null?w[k]:(f?f.w:0);}
@@ -1031,10 +1094,10 @@ function conviction(){
 }
 function verdict(){
   const c=conviction();
-  if(Math.abs(c)<3)return {c,dir:null,label:'NO-TRADE',cls:'amber',size:'Stand aside / half-size at defined pullback only'};
+  if(Math.abs(c)<ALGO.verdictBands.noTrade)return {c,dir:null,label:'NO-TRADE',cls:'amber',size:'Stand aside / half-size at defined pullback only'};
   const dir=c>0?'C':'P';
   return {c,dir,label:c>0?'LONG · CALLS':'SHORT · PUTS',cls:c>0?'green':'red',
-    size:Math.abs(c)<=5?'Staggered: half before / half after biggest binary event':'Full size allowed — still respect stop'};
+    size:Math.abs(c)<=ALGO.verdictBands.full?'Staggered: half before / half after biggest binary event':'Full size allowed — still respect stop'};
 }
 
 /* ---------------- ranking engine ---------------- */
@@ -1044,51 +1107,52 @@ function weekRangePct(){
   const h=Math.max(...wk.map(r=>r.h)),l=Math.min(...wk.map(r=>r.l));
   return (h-l)/state.live.px*100;
 }
+// ALGO.rank — the screener rubric for ONE warrant. Edit component scores/notes here to change how warrants are ranked.
+// rc = {px: live HSI, reqW: required warrant % move, wr: this week's % range}. Component maxima documented in ALGO.rankWeights.
+function rankOne(w,rc){
+  const r={w,score:0,notes:[],flags:[]};
+  const px=w.ask||w.bid;if(!px||!w.eg){r.score=-1;r.flags.push('no price');return r;}
+  const reqIdx=rc.reqW/w.eg; // required index % move
+  r.reqIdx=reqIdx;
+  const wks=weeksTo(w.expiry);r.wks=wks;
+  const otm=w.type==='C'?(w.strike-rc.px)/rc.px*100:(rc.px-w.strike)/rc.px*100;
+  r.otm=otm;
+  const spreadPc=(w.ask&&w.bid)?((w.ask-w.bid)/w.ask*100):TICK/px*100;
+  let s=0;
+  // 1. required-move feasibility (0-30)
+  const feas=Math.max(0,Math.min(1,(0.6*rc.wr-reqIdx)/(0.6*rc.wr)));s+=feas*30;
+  if(reqIdx>0.6*rc.wr){r.flags.push('needs '+reqIdx.toFixed(1)+'% move — exceeds 60% of weekly range');}
+  else r.notes.push('needs only '+reqIdx.toFixed(2)+'% index move for +'+rc.reqW.toFixed(0)+'% (range '+rc.wr.toFixed(1)+'%)');
+  // 2. moneyness (0-25): ideal 2-5% OTM
+  let ms;
+  if(otm<-2){ms=14;r.notes.push('ITM — lower gearing but safer');}
+  else if(otm<=1){ms=20;r.notes.push('ATM — most responsive');}
+  else if(otm<=5){ms=25;r.notes.push(otm.toFixed(1)+'% OTM — sweet spot');}
+  else if(otm<=7){ms=12;r.notes.push(otm.toFixed(1)+'% OTM — stretch');}
+  else {ms=3;r.flags.push(otm.toFixed(1)+'% OTM — lottery zone');}
+  s+=ms;
+  // 3. expiry (0-20)
+  let es;if(wks>=5)es=20;else if(wks>=3)es=10;else es=3;
+  if(wks<3)r.flags.push('only '+wks.toFixed(1)+' wks left — decay trade, half size max');
+  else if(wks>=5)r.notes.push(wks.toFixed(0)+' wks to expiry — room to be wrong');
+  s+=es;
+  // 4. responsiveness (0-10)
+  s+=w.sens?(w.sens<=35?10:w.sens<=50?7:w.sens<=80?4:1):5;
+  if(w.sens&&w.sens<=35)r.notes.push('tick every ~'+Math.round(w.sens)+' pts — very responsive');
+  // 5. spread (0-8)
+  s+=spreadPc<=1?8:spreadPc<=2?6:spreadPc<=4?3:0;
+  if(spreadPc>2)r.flags.push('spread '+spreadPc.toFixed(1)+'% — costly for short holds');
+  // 6. theta (0-7): theta given as % per day (negative)
+  const th=Math.abs(w.theta||1);
+  s+=th<=0.5?7:th<=1?5:th<=2?3:0;
+  if(th>2)r.flags.push('decay ~'+(th*5).toFixed(0)+'%/wk if flat');
+  r.spreadPc=spreadPc;r.score=Math.round(s);
+  return r;
+}
 function rankWarrants(){
-  const v=verdict();const cap=state.settings.capital,tgt=state.settings.target;
-  const reqW=tgt/cap*100; // required warrant % move
-  const wr=weekRangePct();
-  const list=state.warrants.map(w=>{
-    const r={w,score:0,notes:[],flags:[]};
-    const px=w.ask||w.bid;if(!px||!w.eg){r.score=-1;r.flags.push('no price');return r;}
-    const reqIdx=reqW/w.eg; // required index % move
-    r.reqIdx=reqIdx;
-    const wks=weeksTo(w.expiry);r.wks=wks;
-    const otm=w.type==='C'?(w.strike-state.live.px)/state.live.px*100:(state.live.px-w.strike)/state.live.px*100;
-    r.otm=otm;
-    const spreadPc=(w.ask&&w.bid)?((w.ask-w.bid)/w.ask*100):TICK/px*100;
-    // components
-    let s=0;
-    // 1. required move feasibility (0-30)
-    const feas=Math.max(0,Math.min(1,(0.6*wr-reqIdx)/(0.6*wr)));s+=feas*30;
-    if(reqIdx>0.6*wr){r.flags.push('needs '+reqIdx.toFixed(1)+'% move — exceeds 60% of weekly range');}
-    else r.notes.push('needs only '+reqIdx.toFixed(2)+'% index move for +'+reqW.toFixed(0)+'% (range '+wr.toFixed(1)+'%)');
-    // 2. moneyness (0-25): ideal 2-5% OTM
-    let ms;LET: {
-      if(otm<-2){ms=14;r.notes.push('ITM — lower gearing but safer');}
-      else if(otm<=1){ms=20;r.notes.push('ATM — most responsive');}
-      else if(otm<=5){ms=25;r.notes.push(otm.toFixed(1)+'% OTM — sweet spot');}
-      else if(otm<=7){ms=12;r.notes.push(otm.toFixed(1)+'% OTM — stretch');}
-      else {ms=3;r.flags.push(otm.toFixed(1)+'% OTM — lottery zone');}
-    } s+=ms;
-    // 3. expiry (0-20)
-    let es;if(wks>=5)es=20;else if(wks>=3)es=10;else es=3;
-    if(wks<3)r.flags.push('only '+wks.toFixed(1)+' wks left — decay trade, half size max');
-    else if(wks>=5)r.notes.push(wks.toFixed(0)+' wks to expiry — room to be wrong');
-    s+=es;
-    // 4. responsiveness (0-10)
-    s+=w.sens?(w.sens<=35?10:w.sens<=50?7:w.sens<=80?4:1):5;
-    if(w.sens&&w.sens<=35)r.notes.push('tick every ~'+Math.round(w.sens)+' pts — very responsive');
-    // 5. spread (0-8)
-    s+=spreadPc<=1?8:spreadPc<=2?6:spreadPc<=4?3:0;
-    if(spreadPc>2)r.flags.push('spread '+spreadPc.toFixed(1)+'% — costly for short holds');
-    // 6. theta (0-7): theta given as % per day (negative)
-    const th=Math.abs(w.theta||1);
-    s+=th<=0.5?7:th<=1?5:th<=2?3:0;
-    if(th>2)r.flags.push('decay ~'+(th*5).toFixed(0)+'%/wk if flat');
-    r.spreadPc=spreadPc;r.score=Math.round(s);
-    return r;
-  });
+  const v=verdict();
+  const rc={px:state.live.px, reqW:state.settings.target/state.settings.capital*100, wr:weekRangePct()};
+  const list=state.warrants.map(w=>ALGO.rank(w,rc));
   const dir=v.dir;
   const inDir=list.filter(r=>dir&&r.w.type===dir&&r.score>0).sort((a,b)=>b.score-a.score);
   return {all:list.sort((a,b)=>b.score-a.score),inDir,v};
@@ -1098,7 +1162,8 @@ function topPick(){const r=rankWarrants();return r.inDir[0]||null;}
 /* ---------------- simulator model ----------------
    Linear sensitivity model: dW = ±(dU/sens)*tick, decay = theta%/day.
    Transparent and matches the issuer live matrix locally. */
-function warrantPriceAt(w,idxLevel,daysFwd){
+// ALGO.price — simulator pricing model. Swap this body to change the sim (e.g. linear-sensitivity → Black-Scholes).
+function priceModel(w,idxLevel,daysFwd){
   const base=(w.bid+((w.ask||w.bid+TICK)))/2;
   const dU=idxLevel-state.live.px;
   const dirn=w.type==='C'?1:-1;
@@ -1107,6 +1172,7 @@ function warrantPriceAt(w,idxLevel,daysFwd){
   px=px*(1-th*Math.max(0,daysFwd));
   return Math.max(px,0.005);
 }
+function warrantPriceAt(w,idxLevel,daysFwd){return ALGO.price(w,idxLevel,daysFwd);}  // public API — unchanged behaviour
 function tickDn(x){return Math.floor(x/TICK+1e-9)*TICK;}
 function simulate(w,cap,tgt,inIdx,outIdx,days,thetaOverride,brk){
   const wSim=Object.assign({},w);if(thetaOverride!=null&&!isNaN(thetaOverride))wSim.theta=-Math.abs(thetaOverride);
@@ -1376,21 +1442,122 @@ function renderLevels(){
   el.innerHTML=rows.map(r=>'<div class="lvl '+r.cls+'"><span class="nm">'+r.nm+'</span><span class="px mono">'+fmt(r.px)+'</span></div>').join('');
   $('levels-note').innerHTML='Outlined rows = <b>upper & lower levels to watch today</b> (nearest resistance above / support below live price). Pivots from last session ('+wl.p.lastDate+') + weekly + 10-day swings.';
 }
+/* ================= WEEKLY OUTLOOK & DAILY PLAN (auto-generated ~07:00 KUL) ================= */
+function bestByType(t){const all=rankWarrants().all.filter(r=>r.w.type===t&&r.score>0);return all[0]||null;}
+function hsiWeekChg(){const c=state.ohlc.map(r=>r.c);if(c.length<6)return null;return (c[c.length-1]-c[c.length-6])/c[c.length-6]*100;}
+function dailyRangeEst(){const r=state.ohlc.slice(-10);if(!r.length)return null;return Math.round(r.reduce((a,x)=>a+(x.h-x.l),0)/r.length);}
+function nextRollover(){const c=(state.calendar||[]).filter(e=>e.type==='rollover'&&new Date(e.date)>=new Date(Date.now()-864e5)).sort((a,b)=>new Date(a.date)-new Date(b.date));return c[0]||null;}
+function outlookSources(){
+  const S=[['MQ Daily Highlights','https://www.malaysiawarrants.com.my/marketnews/dailyhighlights'],['MQ EOD Insights','https://www.malaysiawarrants.com.my/marketnews/eodinsights'],['HSI Reports','https://www.hsi.com.hk/insights-and-reports/#reports'],['TradingEconomics HK','https://tradingeconomics.com/hong-kong/stock-market'],['Investing.com HSI Fut','https://www.investing.com/indices/hong-kong-40-futures'],['MarketWatch HSI','https://www.marketwatch.com/investing/index/hsi?countrycode=hk'],['Yahoo ^HSI','https://finance.yahoo.com/quote/%5EHSI/']];
+  return '<span style="display:block;margin-top:8px;font-size:11px;color:var(--ink3)">Sources: '+S.map(s=>'<a href="'+s[1]+'" target="_blank" rel="noopener" style="color:var(--accent)">'+s[0]+'</a>').join(' · ')+'</span>';
+}
+function warrantLine(r,label){
+  if(!r)return '<b>'+label+':</b> none passes the filters right now.';
+  const w=r.w;return '<b>'+label+':</b> '+w.sym+' ('+fmt(w.strike)+' '+(w.type==='C'?'call':'put')+', exp '+(w.expiry||'?')+', '+(w.eg||'?')+'x, bid '+(w.bid??'–')+') — rank '+r.score+'/100'+(r.notes[0]?', '+r.notes[0]:'');
+}
+function catalystSplit(){
+  const cat=[],dmp=[];
+  FACTORS.forEach(f=>{const sc=state.factors[f.k]||0;const note=(state.fnotes[f.k]||'').replace('[auto] ','').split(' · ')[0];
+    if(sc>0)cat.push(f.label+' (+'+sc+'): '+note);
+    else if(sc<0)dmp.push(f.label+' ('+sc+'): '+note);});
+  return {cat,dmp};
+}
+function weekEventsText(){
+  const out=[],today=new Date();
+  (state.calendar||[]).forEach(e=>{const d=(new Date(e.date)-today)/864e5;if(d>=-0.5&&d<=7)out.push((e.type==='holiday'?'HK holiday':'Futures rollover')+' '+e.date);});
+  const dom=today.getDate();if(dom>=9&&dom<=17)out.push('mid-month China data window (CPI/GDP/activity, ~9th–17th)');
+  const ns=scanNews(['event']);if(ns&&ns.pos+ns.neg>0)out.push('news flags: '+ns.hits.slice(0,2).join(', '));
+  return out.length?out.join(' · ')+'. Also track US CPI/PPI/FOMC and China PMI/LPR dates.':'No major scheduled events detected — still watch US CPI/FOMC and China data releases.';
+}
+function dayEventText(){
+  const out=[],today=new Date();
+  (state.calendar||[]).forEach(e=>{const d=(new Date(e.date)-today)/864e5;if(d>=-0.5&&d<=1.5)out.push((e.type==='holiday'?'HK holiday':'Futures rollover')+' '+e.date);});
+  const dom=today.getDate();if(dom>=9&&dom<=17)out.push('China data window active');
+  return out.length?out.join(' · '):'nothing scheduled today — monitor overnight US + China headlines.';
+}
+function buildWeeklyOutlook(){
+  const v=verdict(),wl=watchLevels(),p=wl?wl.p:null;
+  const bc=bestByType('C'),bp=bestByType('P'),wk=hsiWeekChg(),roll=nextRollover(),drange=dailyRangeEst();
+  const {cat,dmp}=catalystSplit();
+  const news=(state.news&&state.news.items)||[];
+  const dh=news.find(n=>/highlight/i.test(n.kind)),eod=news.find(n=>/insight|end of day/i.test(n.kind));
+  const ext=state.extNarrative&&state.extNarrative.text?state.extNarrative.text:'';
+  let h='<div style="font-weight:800;color:var(--accent);font-size:15px">📅 WEEKLY OUTLOOK · week of '+mondayOf(todayISO())+'</div>';
+  h+='<br><b>1 · Global &amp; HSI.</b> HSI '+fmt(state.live.px)+' ('+(state.live.chg>=0?'+':'')+fmt(state.live.chg)+' last'+(wk!=null?', '+(wk>=0?'+':'')+wk.toFixed(1)+'% on the week':'')+'). '+(state.fnotes.us?'US/global — '+state.fnotes.us.replace('[auto] ',''):'')+'.'+(ext?' <i>'+ext.slice(0,160)+'…</i>':'');
+  if(p)h+='<br><b>2 · Ranges.</b> Weekly band ≈ <b>'+fmt(p.wkS1)+' – '+fmt(p.wkR1)+'</b> (weekly pivot '+fmt(p.wkP)+'); typical daily swing ≈ '+(drange?fmt(drange)+' pts':'–')+'.';
+  h+='<br><b>3 · Calendar.</b> '+weekEventsText();
+  h+='<br><b>4 · Rollover.</b> '+(roll?('Next HSI futures rollover <b>'+roll.date+'</b> ('+Math.max(0,Math.round((new Date(roll.date)-Date.now())/864e5))+' days) — the live matrix switches contract; warrant prices can gap vs spot, and positions should not be carried across it.'):'No rollover flagged in the coming window.');
+  h+='<br><b>5 · Warrant picks.</b><br>&nbsp;&nbsp;'+warrantLine(bc,'Best call')+'<br>&nbsp;&nbsp;'+warrantLine(bp,'Best put')+'<br>&nbsp;&nbsp;The weekly verdict favours <b>'+(v.dir==='C'?'calls':v.dir==='P'?'puts':'neither — no-trade')+'</b> ('+(v.c>0?'+':'')+v.c+'/10, '+v.size.toLowerCase()+').';
+  if(wl&&p)h+='<br><b>6 · S/R &amp; pivots.</b> Watch <b>'+(wl.lower?fmt(wl.lower[1]):'–')+'</b> support / <b>'+(wl.upper?fmt(wl.upper[1]):'–')+'</b> resistance. Daily pivot '+fmt(p.dayP)+' (R1 '+fmt(p.dayR1)+' · S1 '+fmt(p.dayS1)+'); 10-day swing '+fmt(p.swingL)+'–'+fmt(p.swingH)+'.';
+  h+='<br><b>7 · Catalysts &amp; dampeners.</b> '+(cat.length?'▲ '+cat.slice(0,3).join('; '):'▲ none strong')+'. '+(dmp.length?'▼ '+dmp.slice(0,3).join('; '):'▼ none strong')+'.'+(dh?'<br>&nbsp;&nbsp;<i>MQ daily highlight:</i> '+dh.title:'')+(eod?'<br>&nbsp;&nbsp;<i>MQ EOD insight:</i> '+eod.title:'');
+  h+=outlookSources();
+  return {weekOf:mondayOf(todayISO()),at:Date.now(),html:h};
+}
+function buildDailyPlan(){
+  const v=verdict(),wl=watchLevels(),p=wl?wl.p:null,tp=topPick();
+  const plan=tp?planFor(tp,wl):null,drange=dailyRangeEst();
+  let h='<div style="font-weight:800;color:var(--accent);font-size:15px">☀ DAILY PLAN · '+todayISO()+'</div>';
+  h+='<br><b>Bias:</b> '+v.label+' ('+(v.c>0?'+':'')+v.c+'/10) — '+v.size+'.';
+  if(p)h+='<br><b>Today\'s range:</b> '+fmt(p.dayS1)+' – '+fmt(p.dayR1)+' (pivot '+fmt(p.dayP)+(drange?', ~'+fmt(drange)+'pt swing':'')+').';
+  if(wl)h+='<br><b>Watch:</b> '+(wl.lower?fmt(wl.lower[1])+' support':'–')+' / '+(wl.upper?fmt(wl.upper[1])+' resistance':'–')+'.';
+  h+='<br><b>Today\'s event:</b> '+dayEventText();
+  if(tp&&plan)h+='<br><b>Trade:</b> '+tp.w.sym+' ('+(tp.w.type==='C'?'call':'put')+' '+fmt(tp.w.strike)+') — enter ~'+fmt(plan.entry)+', target '+fmt(plan.target)+', stop '+fmt(plan.stop)+', ~'+fmt(plan.units)+' units.';
+  else if(!v.dir)h+='<br><b>Trade:</b> no-trade bias — stand aside or wait for a defined pullback.';
+  h+=outlookSources();
+  return {d:todayISO(),at:Date.now(),html:h};
+}
+async function fetchExternal(){ // best-effort narrative from TradingEconomics HK (via relay); graceful if blocked
+  if(state.settings.mode==='off')return null;
+  const T=transports(),url='https://tradingeconomics.com/hong-kong/stock-market';
+  for(let i=1;i<T.length&&i<=2;i++){                     // skip direct (CORS); try at most 2 relays, bounded time
+    try{
+      const r=await timeout(fetch(T[i](url),{cache:'no-store'}),6000); if(!r.ok)continue;
+      const html=await r.text();
+      const m=html.replace(/<[^>]+>/g,' ').match(/Hong Kong[^.]*?(rose|fell|gained|dropped|closed|index|Hang Seng)[^.]{0,180}\./i);
+      if(m){state.extNarrative={text:m[0].replace(/\s+/g,' ').trim(),at:Date.now(),src:'TradingEconomics'};return state.extNarrative;}
+    }catch(_){}
+  }
+  return null;
+}
+let outlookRunning=false;
+async function genOutlook(kind,manual){
+  if(outlookRunning)return;outlookRunning=true;
+  try{
+    if(dataAge()==null||dataAge()>20)await refreshAll(false);
+    if(!state.strategies.some(r=>r.d===todayISO())){try{await generateStrategy(false);}catch(e){}}
+    try{await fetchExternal();}catch(e){}
+    if(!state.outlook)state.outlook={weekly:null,daily:null};
+    if(kind==='weekly')state.outlook.weekly=buildWeeklyOutlook();
+    state.outlook.daily=buildDailyPlan();
+    save();renderBriefing();
+    snack((kind==='weekly'?'📅 Weekly outlook':'☀ Daily plan')+' updated · '+new Date().toLocaleTimeString('en-MY'));
+  }catch(e){}
+  outlookRunning=false;
+}
+function outlookTick(){
+  if(state.settings.mode==='off')return;
+  const now=new Date(),hm=now.getHours()*60+now.getMinutes();
+  if(hm<420)return;                                   // before 07:00 local (KUL = device time)
+  if(!state.outlook)state.outlook={weekly:null,daily:null};
+  if(now.getDay()===1 && (!state.outlook.weekly||state.outlook.weekly.weekOf!==mondayOf(todayISO()))){genOutlook('weekly');return;}
+  if(!state.outlook.daily||state.outlook.daily.d!==todayISO()){genOutlook('daily');}
+}
 function renderBriefing(){
   const v=verdict(),wl=watchLevels(),tp=topPick();
-  const L=state.live;const dirW=v.dir==='C'?'upside':'downside';
+  const L=state.live;
   let h='';
   if(state.premarket&&state.premarket.d===todayISO())
-    h+='<b>Pre-market ('+new Date(state.premarket.t).toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit'})+'):</b> futures '+fmt(state.premarket.px)+' ('+(state.premarket.chg>=0?'+':'')+fmt(state.premarket.chg)+' overnight). ';
-  h+='HSI futures at <b>'+fmt(L.px)+'</b> ('+(L.chg>=0?'+':'')+fmt(L.chg)+', as of '+L.stime+'). ';
-  if(wl&&wl.upper&&wl.lower)h+='Today\'s battlefield: <b>'+fmt(wl.lower[1])+'</b> below ('+wl.lower[0]+') vs <b>'+fmt(wl.upper[1])+'</b> above ('+wl.upper[0]+'). ';
-  h+='Weekly factor score is <b>'+(v.c>0?'+':'')+v.c+'</b> → <b>'+v.label+'</b>. '+v.size+'. ';
-  if(tp)h+='Top-ranked vehicle: <b>'+tp.w.sym+'</b> ('+(tp.w.type==='C'?'call':'put')+' '+fmt(tp.w.strike)+', exp '+tp.w.expiry+', '+tp.w.eg+'x gearing) — '+(tp.notes[0]||'')+'. ';
-  else if(!v.dir)h+='Conviction inside the no-trade band — protect capital, wait for the setup. ';
-  h+='<br><br><b>Plan:</b><br>'+(state.plan||'').replace(/\n/g,'<br>');
+    h+='<b>Pre-market ('+new Date(state.premarket.t).toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit'})+'):</b> futures '+fmt(state.premarket.px)+' ('+(state.premarket.chg>=0?'+':'')+fmt(state.premarket.chg)+' overnight).<br>';
+  h+='HSI futures <b>'+fmt(L.px)+'</b> ('+(L.chg>=0?'+':'')+fmt(L.chg)+', as of '+L.stime+').';
+  const O=state.outlook;
+  if(O&&O.weekly)h+='<br><br>'+O.weekly.html;
+  if(O&&O.daily)h+='<br><br>'+O.daily.html;
+  if(!O||(!O.weekly&&!O.daily))h+='<br><br><i>Weekly Outlook auto-builds Monday ~07:00 KUL; Daily Plan each morning ~07:00. Tap “Update now” to build one immediately.</i>';
+  if(state.plan&&state.plan.trim())h+='<br><br><b>Your notes:</b><br>'+state.plan.replace(/\n/g,'<br>');
   $('brief').innerHTML=h;
   $('brief-time').textContent=new Date().toLocaleString('en-MY');
 }
+if($('brief-gen'))$('brief-gen').onclick=()=>genOutlook('weekly',true);   // manual build of both outlook + daily plan
 function wlButton(sym){
   const inWl=state.watchlist.includes(sym);
   return '<button class="wl-btn '+(inWl?'rem':'add')+'" data-wl="'+sym+'" title="'+(inWl?'Remove from':'Add to')+' watchlist">'+(inWl?'−':'+')+'</button>';
@@ -1899,7 +2066,64 @@ $('wl-refresh').onclick=async()=>{
   snack(n?'Refreshed '+n+' watchlist quotes':'No live routes — quotes unchanged (need warrant RIC from live universe fetch)');
 };
 /* ------- settings ------- */
+/* ================= VERSION & CHANGELOG ================= */
+const APP_VERSION='2.4.0';
+const CHANGELOG=[
+  {v:'2.4.0',d:'2026-07-20',t:'Auto Weekly Outlook & Daily Plan',items:[
+    'Morning Briefing now auto-builds a Weekly Outlook (Mondays ~07:00 KUL) and a Daily Plan (each morning ~07:00) instead of a static plan.',
+    'Both cover: global & HSI performance, weekly/daily ranges, calendar events, futures-rollover impact, best call + best put picks, S/R + pivots, and catalysts vs dampeners — with clickable sources.',
+    'Best-effort external narrative scrape via the Worker relay (TradingEconomics HK) + relay allowlist extended to HSI.com.hk, MarketWatch, Investing.com, FutuHK, FX.co. Manual “↻ Update now” button on the briefing.']},
+  {v:'2.3.1',d:'2026-07-19',t:'ALGO kernel refactor',items:[
+    'Extracted all tunable logic (6 strategy factors, verdict bands, screener rubric, simulator pricing, S/R model) into one pure ALGO kernel behind stable contracts, driven by an explicit market ctx.',
+    'Behaviour-preserving (differential-tested: rank/verdict/price byte-identical); factors now editable/added in one place. Ships with the Software Architecture Document + Algorithm Authoring Guide.']},
+  {v:'2.3.0',d:'2026-07-19',t:'Spec rev B — forecasting & pipeline',items:[
+    'R1 Forecast & Actuals log: predicted range, entry/target/stop, size + editable post-mortem lesson per forecast; new Forecast Log CSV export (joins each forecast to actual OHLC with range-held / direction-correct / pick-move).',
+    'R2 Mid-week flip protocol: re-scores fast factors (US/Fed + Sector) vs the week baseline → HOLD / CUT HALF / FLIP with live exit price; auto-runs Wednesday post-close when holding; standing flip-trigger level fires any day.',
+    'R4 Matrix background pipeline: Worker cron snapshots the full warrant matrix twice daily to KV (/matrix); app seeds term sheets from the latest snapshot when it was closed. Replaces the spec’s Playwright/Actions ladder.',
+    'R5 Range-position technical: deterministic top/bottom-decile of 3-week range rule replaces the extension brake (flags chasing tops).']},
+  {v:'2.2.0',d:'2026-07-19',t:'Header ticker & search',items:[
+    'Live price ticker in the header (HSI + active warrant) with flash-up/down animation and colour-blind ▲/▼ arrows; star a watchlist warrant to pin it.',
+    'Type-ahead searchable comboboxes for the Simulator and Add/Edit-Trade warrant pickers; live search box on the Warrant Screener.']},
+  {v:'2.1.0',d:'2026-07-18',t:'Engine logic P1–P5',items:[
+    'P1 flows from completed sessions only; P2 sentiment lexicon v2 (risk appetite, data beats/misses ×2); P3 position alerts (target/stop/trailing); P4 extension brake; P5 Worker-cron tick backfill for unattended slots.']},
+  {v:'2.0.0',d:'2026-07-18',t:'Automated cadence',items:[
+    'Daily pre-market snapshot + auto strategy generation at 08:50 / 10:00 / 14:00 / 16:00; each slot auto-snapshotted and self-scored on the Validation tab with per-slot accuracy — no button needed.']},
+  {v:'1.9.0',d:'2026-07-17',t:'UX hardening',items:[
+    'Fixed top 8 UX/UI issues: mobile loader above tab bar, queued toasts, tap-friendly tooltips, sticky screener columns, collapsible strategy history, protected factor notes, missed-snapshot notice, unified status chip.']},
+  {v:'1.8.0',d:'2026-07-16',t:'Explainability',items:[
+    'Instant hover/tap tooltips on all sparkbars and Validation cells; pivots fixed to use the last completed session; live engine audit trail.']},
+  {v:'1.7.0',d:'2026-07-15',t:'Ops & realtime',items:[
+    'API usage meters + feed health in Settings; Fast-Quotes mode (10s HSI polling in HK hours); dark-mode contrast fixes for toasts, tooltips and modals.']},
+  {v:'1.6.0',d:'2026-07-14',t:'Strategy engine',items:[
+    'Auto factor scoring from live evidence (technicals math, S&P/VIX, news sentiment, calendar risk) with editable weights + per-factor locks; verdict "why" with source links; timestamped Strategy History.']},
+  {v:'1.5.0',d:'2026-07-13',t:'Go online + mobile',items:[
+    'PWA install + offline shell; dark mode (auto/light/dark); mobile bottom tab bar + pinch-zoom; Cloudflare Worker relay + cross-device KV sync; GitHub Pages deploy bundle.']},
+  {v:'1.4.0',d:'2026-07-13',t:'Validation',items:[
+    'Self-scoring Validation tab: snapshots each recommendation and grades direction / warrant / levels out of 10 after the close; overall accuracy % + paper-P&L track record.']},
+  {v:'1.3.0',d:'2026-07-12',t:'Intelligence',items:[
+    'Ask-the-Desk agent (rule engine for stops/sizing/levels/terms/news + optional Claude layer, sourced answers); market-closed / halt / rollover toastbar; editable CORS relay list for longevity.']},
+  {v:'1.2.0',d:'2026-07-12',t:'Simulator & charts',items:[
+    'Interactive P&L simulator with evidence-backed ideal entry/exit; pan/zoom/hover candlestick chart; fetch progress loader; hamburger nav; watchlist reordering; Arial across the app.']},
+  {v:'1.1.0',d:'2026-07-11',t:'QA pass',items:[
+    'Fixed orphaned-position bug on universe refresh, sizing div-by-zero, backup-import validation; close-trade modal; edit/delete portfolio + CSV; freshness chip + auto-refreshing universe with notifications.']},
+  {v:'1.0.0',d:'2026-07-11',t:'Initial build',items:[
+    'HSI Warrant Command Center: dashboard KPIs, S/R levels, weighted factor score → Call/Put verdict, warrant ranking engine, sizing simulator, portfolio, watchlist, live Macquarie + Yahoo data with fallbacks.']},
+];
+function renderChangelog(){
+  if($('side-ver'))$('side-ver').textContent='v'+APP_VERSION+' · Warrant Desk';
+  if($('ver-badge'))$('ver-badge').textContent='v'+APP_VERSION;
+  if($('ver-line'))$('ver-line').innerHTML='<b>Warrant Desk v'+APP_VERSION+'</b> — data schema v'+state.schemaVersion+'. '+CHANGELOG.length+' releases logged.';
+  const t=$('changelog-table');if(!t)return;
+  let h='<tr><th>Date</th><th>Version</th><th>Features implemented</th></tr>';
+  CHANGELOG.forEach(r=>{
+    h+='<tr><td style="white-space:nowrap;vertical-align:top">'+r.d+'</td>'+
+    '<td style="vertical-align:top"><b>v'+r.v+'</b><br><span class="tag grey" style="font-size:9px">'+r.t+'</span></td>'+
+    '<td style="white-space:normal">'+r.items.map(x=>'• '+x).join('<br>')+'</td></tr>';
+  });
+  t.innerHTML=h;
+}
 function renderSettings(){
+  renderChangelog();
   $('set-cap').value=state.settings.capital;$('set-target').value=state.settings.target;
   $('set-brk').value=state.settings.brokerage;$('set-refresh').value=state.settings.refreshSec;
   $('set-mode').value=state.settings.mode;
@@ -1912,7 +2136,7 @@ function renderSettings(){
   renderSyncStatus();
   $('set-ohlc').value=state.ohlc.map(r=>[r.d,r.o,r.h,r.l,r.c].join(',')).join('\n');
   const H=state.health||{};
-  $('health').innerHTML=['index','history','universe','news','calendar'].map(k=>{
+  $('health').innerHTML=['index','history','universe','news','calendar','matrix'].map(k=>{
     const h=H[k];if(!h)return k+': <span style="color:var(--ink3)">never fetched</span>';
     return k+': '+(h.ok?'<b style="color:var(--green)">OK</b>':'<b style="color:var(--red)">FAIL</b>')+' · '+new Date(h.at).toLocaleTimeString('en-MY')+(h.detail?' · '+h.detail:'');
   }).join('<br>');
@@ -2005,8 +2229,9 @@ function scanNews(cats){ // returns {score,-2..2, hits:[], title, link}
   const raw=(pos-neg)/Math.max(2,(pos+neg)/2);
   return {score:Math.max(-2,Math.min(2,Math.round(raw))),hits,pos,neg,n:state.news.items.length};
 }
-function autoTech(){
-  const c=state.ohlc.map(r=>r.c);const n=c.length;if(n<10)return null;
+function autoTech(ctx){
+  const ohlc=(ctx&&ctx.ohlc)||state.ohlc;
+  const c=ohlc.map(r=>r.c);const n=c.length;if(n<10)return null;
   const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
   const last=c[n-1],sma5=avg(c.slice(-5)),sma10=avg(c.slice(-10));
   const mom5=(last-c[n-6])/c[n-6]*100;
@@ -2018,16 +2243,30 @@ function autoTech(){
   else if(mom5<-1.5){s-=0.7;ev.push('5-day momentum '+mom5.toFixed(1)+'%');}
   else if(mom5<-0.3){s-=0.3;ev.push('5-day momentum '+mom5.toFixed(1)+'%');}
   else ev.push('momentum flat ('+mom5.toFixed(1)+'%)');
+  // R5: range-position sub-score (deterministic, replaces the old extension brake).
+  // −1 when the last completed close sits in the top decile of the trailing 3-week range AND gains are decelerating;
+  // +1 in the bottom decile with improving breadth. Penalises chasing tops / rewards value zones systematically.
+  let comp=ohlc;if(comp.length&&comp[comp.length-1].d===todayISO())comp=comp.slice(0,-1);
+  if(comp.length>=15){
+    const win=comp.slice(-15);
+    const hi=Math.max(...win.map(r=>r.h)),lo=Math.min(...win.map(r=>r.l));
+    const cc=comp.map(r=>r.c);const close=cc[cc.length-1];
+    const pos=(hi>lo)?(close-lo)/(hi-lo):0.5;                 // 0 = bottom of 3-wk range, 1 = top
+    const mNow=(cc[cc.length-1]-cc[cc.length-6])/cc[cc.length-6]*100;
+    const mPrev=(cc[cc.length-6]-cc[cc.length-11])/cc[cc.length-11]*100;
+    const decel=mNow<mPrev;                                    // this week's gains slower than prior week's
+    let advNow=0,advPrev=0;
+    for(let i=cc.length-5;i<cc.length;i++)if(cc[i]>cc[i-1])advNow++;
+    for(let i=cc.length-10;i<cc.length-5;i++)if(cc[i]>cc[i-1])advPrev++;
+    const breadthUp=advNow>advPrev;
+    if(pos>=0.9&&decel){s-=1;ev.push('⚠ range-position: close in TOP decile of 3-wk range ('+Math.round(pos*100)+'%) + gains decelerating → −1 (chasing the top)');}
+    else if(pos<=0.1&&breadthUp){s+=1;ev.push('range-position: close in BOTTOM decile of 3-wk range ('+Math.round(pos*100)+'%) + improving breadth → +1 (value zone)');}
+    else ev.push('range-position: '+Math.round(pos*100)+'% of 3-wk range'+(decel?', gains decelerating':', gains steady')+' → no adjustment');
+  }
   let score=Math.max(-2,Math.min(2,Math.round(s)));
-  // P4: extension brake — after a one-way run, cap conviction (trend intact, chase risk high)
-  let comp=state.ohlc;if(comp.length&&comp[comp.length-1].d===todayISO())comp=comp.slice(0,-1);
-  const cc=comp.map(r=>r.c);let ups=0,dns=0;
-  for(let i=cc.length-1;i>0;i--){if(cc[i]>cc[i-1]){if(dns)break;ups++;}else{if(ups)break;dns++;}}
-  if(score>1&&ups>=4&&mom5>3){score=1;ev.push('⚠ extension brake: '+ups+' straight up sessions, +'+mom5.toFixed(1)+'% in 5d — capped at +1 (mean-reversion risk)');}
-  if(score<-1&&dns>=4&&mom5<-3){score=-1;ev.push('⚠ extension brake: '+dns+' straight down sessions, '+mom5.toFixed(1)+'% in 5d — capped at −1 (bounce risk)');}
   return {score,ev};
 }
-async function autoUS(){
+async function autoUS(ctx){
   const j=await apiJSON('https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=5d&interval=1d');
   const q=j.chart.result[0];const cl=q.indicators.quote[0].close.filter(x=>x!=null);
   const chg=(cl[cl.length-1]-cl[cl.length-2])/cl[cl.length-2]*100;
@@ -2038,26 +2277,38 @@ async function autoUS(){
   if(vix!=null){ev.push('VIX '+vix.toFixed(1));if(vix<15)s+=0.5;else if(vix>22)s-=1;}
   return {score:Math.max(-2,Math.min(2,Math.round(s))),ev};
 }
-function autoFlows(){ // P1: breadth from COMPLETED sessions only — today's partial candle no longer pollutes the count
-  let rows=state.ohlc;
+function autoFlows(ctx){ // P1: breadth from COMPLETED sessions only — today's partial candle no longer pollutes the count
+  let rows=(ctx&&ctx.ohlc)||state.ohlc;
   if(rows.length&&rows[rows.length-1].d===todayISO())rows=rows.slice(0,-1);
   const c=rows.map(r=>r.c);const n=c.length;if(n<6)return null;
   let adv=0;for(let i=n-5;i<n;i++)if(c[i]>c[i-1])adv++;
   const ev=[adv+' of last 5 completed sessions closed higher (breadth proxy — southbound data not machine-readable)'];
   return {score:Math.max(-2,Math.min(2,adv-2)),ev};
 }
-function autoEvent(){
+function autoEvent(ctx){
   let s=0;const ev=[];
-  const roll=(state.calendar||[]).find(e=>e.type==='rollover'&&(new Date(e.date)-Date.now())/864e5>=-0.5&&(new Date(e.date)-Date.now())/864e5<=4);
+  const cal=(ctx&&ctx.calendar)||state.calendar;
+  const roll=(cal||[]).find(e=>e.type==='rollover'&&(new Date(e.date)-Date.now())/864e5>=-0.5&&(new Date(e.date)-Date.now())/864e5<=4);
   if(roll){s-=1;ev.push('HSI futures rollover '+roll.date);}
   const dom=new Date().getDate();
   if(dom>=9&&dom<=17){s-=1;ev.push('mid-month China data window (CPI/credit/GDP/activity typically 9th–17th)');}
   const ns=scanNews(['event']);
   if(ns&&ns.pos+ns.neg>0){s-=1;ev.push('news flags upcoming binary events: '+ns.hits.slice(0,3).join(', '));}
-  const hol=(state.calendar||[]).find(e=>e.type==='holiday'&&(new Date(e.date)-Date.now())/864e5>=0&&(new Date(e.date)-Date.now())/864e5<=5);
+  const hol=(cal||[]).find(e=>e.type==='holiday'&&(new Date(e.date)-Date.now())/864e5>=0&&(new Date(e.date)-Date.now())/864e5<=5);
   if(hol){ev.push('HK holiday '+hol.date+' this week (thin liquidity around it)');}
   if(!ev.length)ev.push('no major scheduled risk detected this week');
   return {score:Math.max(-2,Math.min(0,s)),ev};
+}
+// R1: derive the entry/target/stop/size plan logged with each forecast
+function planFor(tp,wl){
+  if(!tp||!wl)return null;
+  const isC=tp.w.type==='C';
+  const eLvl=isC?(wl.lower?wl.lower[1]:null):(wl.upper?wl.upper[1]:null);
+  const tLvl=isC?(wl.upper?wl.upper[1]:null):(wl.lower?wl.lower[1]:null);
+  const stop=eLvl!=null?Math.round(isC?eLvl-150:eLvl+150):null;
+  const px=tp.w.ask||tp.w.bid;
+  const units=px?Math.floor((state.settings.capital-state.settings.brokerage)/(px*LOT))*LOT:null;
+  return {entry:eLvl!=null?Math.round(eLvl):null,target:tLvl!=null?Math.round(tLvl):null,stop,units,px:px||null};
 }
 let genRunning=false;
 async function generateStrategy(manual,slotId){
@@ -2066,14 +2317,14 @@ async function generateStrategy(manual,slotId){
   if($('gen-status'))$('gen-status').textContent='Generating — refreshing feeds…';
   try{
     if(dataAge()==null||dataAge()>10)await refreshAll(false);
+    // Kernel-driven: score every factor from the market context. Add/edit a factor in ALGO.factors — this loop never changes.
+    const ctx=buildCtx();
     const auto={},srcs={};
-    const t=autoTech();if(t){auto.tech=t;srcs.tech=[SRC.hsi(),SRC.yahoo()];}
-    try{const u=await autoUS();auto.us=u;srcs.us=[['Yahoo — S&P 500','https://finance.yahoo.com/quote/%5EGSPC/'],['Yahoo — VIX','https://finance.yahoo.com/quote/%5EVIX/']];}
-    catch(e){auto.us={score:0,ev:['US quote fetch failed — scored neutral, set manually if you know the close']};srcs.us=[SRC.yahoo()];}
-    const cn=scanNews(['china']);auto.china=cn?{score:cn.score,ev:['news sentiment ('+(cn.pos||0)+' pos / '+(cn.neg||0)+' neg keywords): '+cn.hits.slice(0,4).join(', ')]}:{score:0,ev:['no news cached — neutral; refresh or score manually']};srcs.china=[SRC.mqnews(),SRC.tecal()];
-    const se=scanNews(['sect']);auto.sect=se?{score:se.score,ev:['heavyweight-sector news sentiment: '+se.hits.slice(0,4).join(', ')]}:{score:0,ev:['no news cached — neutral']};srcs.sect=[SRC.mqnews()];
-    const fl=autoFlows();if(fl){auto.flow=fl;srcs.flow=[SRC.hsi()];}
-    const evt=autoEvent();auto.event=evt;srcs.event=[SRC.hkex(),SRC.tecal(),SRC.mqnews()];
+    for(const f of ALGO.factors){
+      let res=null;
+      try{res=await f.score(ctx);}catch(e){res=null;}
+      if(res){auto[f.key]={score:res.score,ev:res.ev};srcs[f.key]=res.sources||[];}
+    }
     // apply to unlocked factors — U6: never silently destroy hand-written notes
     const applied=[],locked=[],handEdited=[];
     FACTORS.forEach(f=>{
@@ -2101,6 +2352,9 @@ async function generateStrategy(manual,slotId){
       conv:v.c,label:v.label,dir:v.dir,
       px:state.live.px,pxTime:state.live.stime,
       upper:wl&&wl.upper?wl.upper:null,lower:wl&&wl.lower?wl.lower:null,
+      predLo:wl&&wl.lower?Math.round(wl.lower[1]):null, predHi:wl&&wl.upper?Math.round(wl.upper[1]):null, // R1 predicted range
+      plan:planFor(tp,wl),   // R1 entry / target / stop / size
+      lesson:'', midweek:'', // R1 post-mortem lesson · R2 mid-week action note (filled later)
       pick:tp?{sym:tp.w.sym,code:tp.w.code,type:tp.w.type,strike:tp.w.strike,expiry:tp.w.expiry,bid:tp.w.bid,ask:tp.w.ask,eg:tp.w.eg,score:tp.score,notes:tp.notes.slice(0,3),flags:tp.flags.slice(0,2)}:null,
       auto:manual?'manual trigger':(slotId?'auto slot '+slotId:'daily auto')};
     FACTORS.forEach(f=>{rec.evidence[f.k]=auto[f.k]?auto[f.k].ev:[state.fnotes[f.k]||'manual'];rec.sources[f.k]=srcs[f.k]||[];});
@@ -2145,9 +2399,13 @@ function renderStrategyHistory(){
   if(!list.length){el.innerHTML='<div class="empty"><div class="big">📜</div>No strategies yet — press ⚡ Generate strategy, or it runs itself each trading morning.</div>';return;}
   const shown=histExpand?list:list.slice(0,5); // U5: keep the page short
   el.innerHTML=shown.map((r,i)=>'<div class="why" style="margin-bottom:10px">'+whyHTML(r)+
-    '<div class="row" style="margin-top:8px;justify-content:flex-end"><button class="btn sm danger" data-sdel="'+r.t+'">🗑</button></div></div>').join('')+
+    '<div class="row" style="margin-top:8px;gap:8px;align-items:center"><input data-lesson="'+r.t+'" placeholder="post-mortem lesson…" value="'+(r.lesson||'').replace(/"/g,'&quot;')+'" style="flex:1;font-size:12px">'+
+    '<button class="btn sm danger" data-sdel="'+r.t+'">🗑</button></div></div>').join('')+
     (list.length>5?'<div class="row" style="justify-content:center"><button class="btn ghost sm" id="hist-more">'+(histExpand?'Show latest 5 only':'Show all '+list.length+' strategies')+'</button></div>':'');
   const hm=$('hist-more');if(hm)hm.onclick=()=>{histExpand=!histExpand;renderStrategyHistory();};
+  el.querySelectorAll('[data-lesson]').forEach(inp=>inp.onchange=()=>{
+    const r=state.strategies.find(x=>''+x.t===inp.dataset.lesson);if(r){r.lesson=inp.value;save();}
+  });
   el.querySelectorAll('[data-sdel]').forEach(b=>b.onclick=()=>{
     const i=state.strategies.findIndex(x=>''+x.t===b.dataset.sdel);
     if(i<0)return;const rec=state.strategies[i];
@@ -2155,7 +2413,86 @@ function renderStrategyHistory(){
     snack('Strategy record deleted',()=>{state.strategies.splice(i,0,rec);save();renderStrategyHistory();});
   });
 }
+// R1: Forecast + Actuals CSV — joins each logged forecast with the actual OHLC for its date
+function exportForecastLog(){
+  if(!state.strategies.length){snack('No forecasts logged yet');return;}
+  const H=['date','time','trigger','china','us','tech','sect','flow','event','conviction','direction',
+    'pred_low','pred_high','entry','target','stop','size_units','pick','pick_type','pick_strike','pick_entry_px',
+    'actual_close','actual_high','actual_low','range_held','dir_correct','pick_move_%','midweek_action','lesson'];
+  const rows=[H];
+  state.strategies.forEach(r=>{
+    const a=state.ohlc.find(x=>x.d===r.d)||null;              // actuals for that date, if the close has happened
+    const p=r.plan||{};
+    let rangeHeld='',dirOK='',pickMove='';
+    if(a){
+      if(r.predLo!=null&&r.predHi!=null)rangeHeld=(a.l>=r.predLo*0.999&&a.h<=r.predHi*1.001)?'Y':'N';
+      if(r.dir&&r.px)dirOK=((a.c-r.px>=0&&r.dir==='C')||(a.c-r.px<0&&r.dir==='P'))?'Y':'N';
+      if(r.pick&&r.pick.ask&&r.pick.sens){const dirn=r.pick.type==='C'?1:-1;
+        const est=Math.max((r.pick.bid||r.pick.ask)+dirn*(a.c-r.px)/r.pick.sens*TICK,0.005);
+        pickMove=((est-r.pick.ask)/r.pick.ask*100).toFixed(1);}
+    }
+    rows.push([r.d,new Date(r.t).toLocaleTimeString('en-MY'),r.auto,
+      r.factors.china,r.factors.us,r.factors.tech,r.factors.sect,r.factors.flow,r.factors.event,
+      r.conv,r.dir==='C'?'LONG':r.dir==='P'?'SHORT':'NO-TRADE',
+      r.predLo??'',r.predHi??'',p.entry??'',p.target??'',p.stop??'',p.units??'',
+      r.pick?r.pick.sym:'',r.pick?r.pick.type:'',r.pick?r.pick.strike:'',r.pick&&p.px?p.px:'',
+      a?a.c:'',a?a.h:'',a?a.l:'',rangeHeld,dirOK,pickMove,
+      (r.midweek||'').replace(/[,\n]/g,';'),(r.lesson||'').replace(/[,\n]/g,';')]);
+  });
+  const blob=new Blob([rows.map(r=>r.join(',')).join('\n')],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='warrantdesk-forecast-log-'+todayISO()+'.csv';a.click();
+  snack('Forecast log exported · '+(rows.length-1)+' forecasts');
+}
+$('flog-csv').onclick=exportForecastLog;
 $('genStrategy').onclick=()=>generateStrategy(true);
+/* ================= R2: MID-WEEK FLIP PROTOCOL ================= */
+function mondayOf(iso){const d=new Date(iso+'T12:00:00');const wd=(d.getDay()+6)%7;d.setDate(d.getDate()-wd);return d.toISOString().slice(0,10);}
+function weekBaseline(){const wk=mondayOf(todayISO());return state.strategies.find(s=>mondayOf(s.d)===wk)||null;}
+async function midweekCheck(manual){
+  const base=weekBaseline(),out=$('mw-out');if(!out)return;
+  if(!base){out.innerHTML='No baseline strategy logged this week yet — press ⚡ Generate strategy first.';if(manual)snack('No baseline this week');return;}
+  let us=null;try{us=await autoUS();}catch(e){}
+  const sn=scanNews(['sect']);const se=sn?sn.score:(base.factors.sect||0);
+  const curUS=us?us.score:(base.factors.us||0);
+  const dUS=curUS-(base.factors.us||0),dSE=se-(base.factors.sect||0);
+  const moved=Math.max(Math.abs(dUS),Math.abs(dSE));
+  const openPos=state.portfolio.open,pick=topPick();
+  let exitTxt='';
+  if(openPos.length){const w=state.warrants.find(x=>x.sym===openPos[0].sym);exitTxt=openPos[0].sym+' live bid '+(w&&w.bid!=null?w.bid.toFixed(3):'–');}
+  else if(pick)exitTxt=pick.w.sym+' live bid '+(pick.w.bid!=null?pick.w.bid.toFixed(3):'–');
+  let action,cls;
+  if(moved<2){action='HOLD';cls='green';}
+  else{
+    const tf=Object.assign({},base.factors,{us:curUS,sect:se});
+    let s=0,tw=0;FACTORS.forEach(f=>{s+=(tf[f.k]||0)*wt(f.k);tw+=wt(f.k);});
+    const newConv=tw?+(s/tw*5).toFixed(1):0;
+    action=(Math.sign(newConv)!==Math.sign(base.conv||0)&&Math.abs(newConv)>=3)?'FLIP':'CUT HALF';
+    cls=action==='FLIP'?'red':'amber';
+  }
+  out.innerHTML='<b><span class="tag '+cls+'">'+action+'</span></b> — fast-factor swing vs '+base.d+' baseline: '+
+    'US/Fed '+(base.factors.us>=0?'+':'')+base.factors.us+'→'+(curUS>=0?'+':'')+curUS+' ('+(dUS>=0?'+':'')+dUS+'), '+
+    'Sector '+(base.factors.sect>=0?'+':'')+base.factors.sect+'→'+(se>=0?'+':'')+se+' ('+(dSE>=0?'+':'')+dSE+').'+
+    (moved>=2?'<br>A fast factor moved ≥2 points → <b>'+action+'</b>'+(exitTxt?' · exit ref: '+exitTxt:'')+'. Logged to this week\'s forecast row.':'<br>Neither fast factor moved ≥2 — thesis intact, stay the course.')+
+    (us?'<br><span style="color:var(--ink3)">'+us.ev.join('; ')+(sn&&sn.hits?'; sector news: '+sn.hits.slice(0,3).join(', '):'')+'</span>':'');
+  base.midweek=action+' @'+new Date().toLocaleString('en-MY')+' (ΔUS '+dUS+', ΔSect '+dSE+')';
+  save();renderStrategyHistory();
+  if(manual)snack('Mid-week check: '+action);
+}
+$('mw-run').onclick=()=>midweekCheck(true);
+function renderFlipNote(){const n=$('mw-flipnote');if(n)n.textContent=state.flip&&state.flip.level?('Armed — alerts when HSI is '+state.flip.dir+' '+fmt(state.flip.level)):'No flip alert set';}
+function renderMidweek(){
+  if(!$('mw-flip'))return;
+  if(document.activeElement!==$('mw-flip'))$('mw-flip').value=(state.flip&&state.flip.level)?state.flip.level:'';
+  if(state.flip)$('mw-flipdir').value=state.flip.dir||'below';
+  renderFlipNote();
+}
+$('mw-flipsave').onclick=()=>{
+  const lv=+$('mw-flip').value||null;
+  state.flip={level:lv,dir:$('mw-flipdir').value,setAt:lv?Date.now():null,firedD:null};
+  save();renderFlipNote();
+  snack(lv?('Flip alert armed: HSI '+$('mw-flipdir').value+' '+fmt(lv)):'Flip alert cleared');
+};
 /* ================= SLOT SCHEDULER (pre-market + 08:50 / 10:00 / 14:00 / 16:00) ================= */
 const SLOTS=[{id:'08:50',m:530},{id:'10:00',m:600},{id:'14:00',m:840},{id:'16:00',m:960}];
 async function slotTick(){
@@ -2176,6 +2513,11 @@ async function slotTick(){
     }
   }
   scoreSlots(false);
+  // R2 · Wednesday post-close mid-week check when holding a position (once/day)
+  if(new Date().getDay()===3&&m>=965&&state.portfolio.open.length){
+    const base=weekBaseline();
+    if(base&&!(base.midweek||'').includes('@')){try{await midweekCheck(false);}catch(e){}}
+  }
 }
 function scoreSlots(force){
   const iso=todayISO();const m=new Date().getHours()*60+new Date().getMinutes();
@@ -2260,6 +2602,12 @@ function checkAlerts(){
         snack('📈 '+t.sym+' is +'+up.toFixed(0)+'% — consider trailing your stop to breakeven ('+t.entry.toFixed(3)+') or higher');}
     }
   });
+  // R2 · standing flip-trigger level — fires any day, once
+  if(state.flip&&state.flip.level){
+    const lv=state.flip.level,hit=state.flip.dir==='above'?px>=lv:px<=lv;
+    if(hit&&state.flip.firedD!==d){state.flip.firedD=d;changed=true;
+      snack('🔁 FLIP TRIGGER — HSI '+fmt(px)+' is '+state.flip.dir+' your '+fmt(lv)+' level. Run the mid-week check and act on the position.');}
+  }
   if(changed)save();
 }
 /* ================= P5: WORKER-CRON TICK BACKFILL ================= */
@@ -2296,6 +2644,38 @@ function backfillSlots(days){
   });
   if(n){state.slotRecords.sort((a,b)=>a.t-b.t);if(state.slotRecords.length>240)state.slotRecords=state.slotRecords.slice(-240);scoreSlots(false);save();}
   return n;
+}
+/* ================= R4: WORKER-CRON MATRIX SNAPSHOTS ================= */
+async function fetchMatrix(){
+  if(!state.settings.syncUrl)return null;
+  const r=await timeout(fetch(state.settings.syncUrl.replace(/\/$/,'')+'/matrix?days=10'),12000);
+  if(!r.ok)throw new Error('matrix '+r.status);
+  return await r.json();
+}
+function applyMatrix(days){
+  if(!days)return 0;
+  let latest=null;
+  Object.keys(days).forEach(d=>{(days[d]||[]).forEach(s=>{if(s.rows&&s.rows.length&&(!latest||s.t>latest.t))latest=Object.assign({},s,{d});});});
+  if(!latest)return 0;
+  state.matrixSnap={d:latest.d,half:latest.half,t:latest.t,count:latest.count,source:latest.source};
+  // seed warrant term-sheet fields ONLY when the live universe is older than this snapshot (app was closed)
+  if((state.wuAt||0)<latest.t){
+    const pN=s=>{const n=parseFloat((''+s).replace(/[,%]/g,''));return isNaN(n)?null:n;};
+    const bySym={};state.warrants.forEach(w=>bySym[w.sym]=w);
+    latest.rows.forEach(row=>{
+      const sym=row.sym;if(!sym)return;
+      const w=bySym[sym]||{sym,code:row.code,ric:''};
+      w.type=row.type==='C'?'C':'P';w.strike=pN(row.strike);w.expiry=parseMQDate(row.expiry);
+      w.eg=pN(row.eg);w.sens=pN(row.sens);w.bid=pN(row.bid);
+      w.ask=pN(row.offer)||(pN(row.bid)!=null?+(pN(row.bid)+TICK).toFixed(3):null);
+      w.iv=pN(row.iv);w.theta=pN(row.theta);w.stale=false;
+      w.updated=new Date(latest.t).toLocaleString('en-MY')+' (cron '+latest.half+')';
+      if(!bySym[sym]){state.warrants.push(w);bySym[sym]=w;}
+    });
+    state.wuAt=latest.t;state.wuTime='cron snapshot '+latest.half+' · '+new Date(latest.t).toLocaleString('en-MY');
+    health('matrix',true,latest.count+' warrants ('+latest.half+')');
+  }
+  return 1;
 }
 /* ================= VALIDATION (self-scoring) ================= */
 function tradingDay(iso){const d=new Date(iso+'T12:00:00');const wd=d.getDay();return wd!==0&&wd!==6&&!isHoliday(iso);}
@@ -2639,7 +3019,7 @@ function mergeRemote(rm){
   state.validation.days=byKey(rm.validation&&rm.validation.days,state.validation.days,'d').sort((a,b)=>a.d<b.d?-1:1);
   state.watchlist=[...new Set([...(rm.watchlist||[]),...(state.watchlist||[])])];
   // scalars/blobs: remote (newer) wins
-  ['factors','fnotes','plan','warrants','wuTime','wuAt','live','liveAt','ohlc','news','calendar','chat','intraday','activeWarrant','strategies','slotRecords','premarket','validation','flocks','updatedAt'].forEach(k=>{if(rm[k]!==undefined)state[k]=rm[k];});
+  ['factors','fnotes','plan','warrants','wuTime','wuAt','live','liveAt','ohlc','news','calendar','chat','intraday','activeWarrant','strategies','slotRecords','premarket','validation','flocks','flip','outlook','extNarrative','updatedAt'].forEach(k=>{if(rm[k]!==undefined)state[k]=rm[k];});
   state.settings=Object.assign({},defaultState().settings,rm.settings||{},{syncUrl:keepUrl,syncToken:keepTok,theme:keepTheme});
   return true;
 }
@@ -2691,7 +3071,7 @@ function renderAll(){
   validateTick(false);
   renderKPIs();drawChart();renderLevels();renderBriefing();renderRec();renderChat();renderValidation();
   if(!focusInside('factors'))renderFactors();else renderVerdict();
-  renderUniverse();simOptions();renderPortfolio();renderWatchlist();renderStrategyHistory();
+  renderUniverse();simOptions();renderPortfolio();renderWatchlist();renderStrategyHistory();renderMidweek();
   if(!focusInside('page-settings'))renderSettings();
   if(document.activeElement!==$('plan'))$('plan').value=state.plan||'';
   $('ai-status').textContent=state.settings.aiKey?'rule engine + Claude':'rule engine';
@@ -2708,7 +3088,7 @@ let schedT=null;
 function startLoop(){
   clearInterval(loopT);clearInterval(freshT);clearInterval(fastT);clearInterval(schedT);
   freshT=setInterval(updateFresh,30000);
-  schedT=setInterval(()=>{slotTick().catch(()=>{});},60000); // slot scheduler runs even if auto-refresh is off
+  schedT=setInterval(()=>{slotTick().catch(()=>{});outlookTick();},60000); // slot scheduler + 07:00 outlook builder
   // near-realtime quote: 10s polling during HK hours (lightweight — index quote only)
   if(state.settings.fastQuotes&&state.settings.mode!=='off')
     fastT=setInterval(async()=>{
