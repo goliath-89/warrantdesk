@@ -1,0 +1,211 @@
+{
+ "generatedAt": "2026-09-18T16:26:10.450Z",
+ "engine": "3.0.0",
+ "date": "2026-06-26",
+ "backfill": true,
+ "decision": {
+  "version": "3.0.0",
+  "date": "2026-06-26",
+  "preOpen": 22952.1,
+  "lastClose": 23076.9,
+  "atr": 448.37,
+  "features": {
+   "atr": 448.37,
+   "lastClose": 23076.9,
+   "z": -2.09,
+   "prev": -0.75,
+   "gap": -0.28,
+   "mom": -2.76
+  },
+  "factors": {
+   "stretch": {
+    "label": "Stretch vs 10d mean (fade)",
+    "score": 1,
+    "weight": 35,
+    "evidence": [
+     "close -2.09 ATR from 10d mean → stretched, fade it"
+    ],
+    "missing": false
+   },
+   "prevDay": {
+    "label": "Prior-day move (fade)",
+    "score": 0,
+    "weight": 25,
+    "evidence": [
+     "prior session -0.75 ATR → ordinary"
+    ],
+    "missing": false
+   },
+   "gap": {
+    "label": "Opening gap (fade)",
+    "score": 0,
+    "weight": 20,
+    "evidence": [
+     "opening gap -0.28 ATR → negligible"
+    ],
+    "missing": false
+   },
+   "fear": {
+    "label": "Fear (VIX) — buy panic",
+    "score": 0,
+    "weight": 20,
+    "evidence": [
+     "VIX 18.89 → calm"
+    ],
+    "missing": false
+   },
+   "us": {
+    "label": "US context (no weight)",
+    "score": 0,
+    "weight": 0,
+    "evidence": [
+     "S&P 500 -0.01% (context only — no consistent edge in the 2y test)"
+    ],
+    "missing": false
+   },
+   "china": {
+    "label": "China context (no weight)",
+    "score": -1,
+    "weight": 0,
+    "evidence": [
+     "FXI -2.1%",
+     "USDCNY +0%",
+     "context only — no consistent edge in the 2y test"
+    ],
+    "missing": false
+   }
+  },
+  "conviction": 1.8,
+  "dir": "C",
+  "size": {
+   "multiplier": 0.5,
+   "reasons": [
+    "single signal → half size"
+   ]
+  },
+  "holdDays": 3,
+  "label": "LONG · CALLS"
+ },
+ "vehicle": {
+  "sym": "HSI-CWWB",
+  "code": "0652WB",
+  "type": "C",
+  "strike": 25000,
+  "expiry": "2026-11-25",
+  "bid": 0.475,
+  "ask": 0.48,
+  "eg": 9.6,
+  "sens": 27.3,
+  "theta": -0.39,
+  "iv": 32.9,
+  "weeks": 21.71,
+  "ric": "CWHI_t1841.KL"
+ },
+ "vehicleSelection": {
+  "reasons": [
+   "locked for the week (chosen earlier this week, still passes all filters)"
+  ],
+  "locked": true,
+  "candidates": 2,
+  "rejected": [
+   {
+    "sym": "HSI-CWS2",
+    "why": "no usable quote/terms; gearing 44.1x outside 8–14x"
+   },
+   {
+    "sym": "HSI-CWS3",
+    "why": "sensitivity 266.7 > 40; spread 33.3% > 1.5%; gearing 46.4x outside 8–14x"
+   },
+   {
+    "sym": "HSI-CWS4",
+    "why": "spread 5.1% > 1.5%; gearing 17.8x outside 8–14x"
+   },
+   {
+    "sym": "HSI-CWS8",
+    "why": "sensitivity 63.3 > 40; spread 4.3% > 1.5%; gearing 17.8x outside 8–14x"
+   },
+   {
+    "sym": "HSI-CWSN",
+    "why": "no usable quote/terms; gearing 36.8x outside 8–14x"
+   },
+   {
+    "sym": "HSI-CWSO",
+    "why": "sensitivity 86.7 > 40; spread 12.5% > 1.5%; gearing 40.8x outside 8–14x"
+   },
+   {
+    "sym": "HSI-CWSQ",
+    "why": "spread 3.1% > 1.5%; gearing 25.7x outside 8–14x"
+   },
+   {
+    "sym": "HSI-CWU1",
+    "why": "sensitivity 46.7 > 40; spread 2.2% > 1.5%"
+   },
+   {
+    "sym": "HSI-CWU2",
+    "why": "spread 1.5% > 1.5%"
+   },
+   {
+    "sym": "HSI-CWU7",
+    "why": "sensitivity 190.9 > 40; spread 11.1% > 1.5%; gearing 16.2x outside 8–14x"
+   },
+   {
+    "sym": "HSI-CWU8",
+    "why": "sensitivity 133.4 > 40; spread 7.7% > 1.5%; gearing 15.5x outside 8–14x"
+   },
+   {
+    "sym": "HSI-CWUE",
+    "why": "no usable quote/terms; spread 20.0% > 1.5%; gearing 22.2x outside 8–14x"
+   }
+  ]
+ },
+ "plan": null,
+ "ext": {
+  "spxChgPct": -0.01,
+  "spxDate": "2026-06-25",
+  "vix": 18.89,
+  "fxiChgPct": -2.1,
+  "cnhChgPct": 0
+ },
+ "sources": {
+  "note": "OFFLINE: history + warrants-sample.json",
+  "preOpen": "OFFLINE: actual cash open used as pre-open level"
+ },
+ "inputErrors": [],
+ "openPosition": {
+  "from": "2026-06-24",
+  "dir": "C",
+  "vehicle": "HSI-CWWB",
+  "plan": {
+   "entry": 23421,
+   "stop": 23028,
+   "target": 24073,
+   "stopPts": 393,
+   "stopBasis": "premium −15%",
+   "targetPts": 652,
+   "holdDays": 3,
+   "units": 5100,
+   "capitalRM": 2500,
+   "buyAt": 0.48,
+   "exitAtTarget": 0.585,
+   "exitAtStop": 0.4,
+   "winRM": 515,
+   "lossRM": -428,
+   "rr": 1.2,
+   "timeStop": "flat at the close of session 3 at the latest",
+   "note": null
+  },
+  "note": "position opened 2026-06-24 is still inside its 3-session window — manage it per its plan; no new entry today"
+ },
+ "stance": "HOLD",
+ "result": {
+  "date": "2026-06-26",
+  "dir": "C",
+  "conviction": 1.8,
+  "hsiOpen": 22952.1,
+  "hsiClose": 22671.9,
+  "hsiChgOpenClosePct": -1.22,
+  "hsiChgPrevClosePct": -1.76,
+  "kind": "hold"
+ },
+ "scoredAt": "2026-09-18T16:26:33.002Z"
+}

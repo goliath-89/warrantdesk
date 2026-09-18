@@ -1,0 +1,19 @@
+name: CI — engine tests & backtest gate
+
+on:
+  push:
+    paths: ["engine/**", "data/history/**", "index.html", ".github/workflows/ci.yml"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Unit tests
+        run: node engine/test.js
+      - name: Backtest gate — v3 must beat the v2.4.0 baseline on the stored 2-year history
+        run: node engine/backtest.js --gate

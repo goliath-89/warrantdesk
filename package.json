@@ -1,0 +1,16 @@
+{
+  "name": "warrantdesk",
+  "version": "3.0.0",
+  "private": true,
+  "description": "HSI warrant desk — server-side daily decision, honest scorecard, offline PWA viewer",
+  "scripts": {
+    "test": "node engine/test.js",
+    "backtest": "node engine/backtest.js",
+    "gate": "node engine/backtest.js --gate",
+    "diagnose": "node engine/diagnose.js",
+    "decide": "node engine/decide.js",
+    "score": "node engine/score.js",
+    "serve": "node tools/serve.js"
+  },
+  "engines": { "node": ">=18" }
+}

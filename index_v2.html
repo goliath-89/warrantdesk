@@ -247,17 +247,17 @@ canvas{width:100%;display:block}
   <div class="logo"><span class="dot">◮</span> WarrantDesk</div>
   <div class="navgrp">Main</div>
   <button class="nav on" data-page="dash"><span class="ico">▦</span> Dashboard</button>
-  <button class="nav" data-page="strategy"><span class="ico">☲</span> Decision & Plan</button>
+  <button class="nav" data-page="strategy"><span class="ico">☲</span> Strategy Score</button>
   <button class="nav" data-page="warrants"><span class="ico">⇄</span> Warrant Screener</button>
   <div class="navgrp">Trading</div>
   <button class="nav" data-page="sim"><span class="ico">∿</span> Simulator</button>
   <button class="nav" data-page="portfolio"><span class="ico">▤</span> Portfolio <span class="pill" id="pf-pill" style="display:none"></span></button>
   <button class="nav" data-page="watchlist"><span class="ico">☆</span> Watchlist <span class="pill" id="wl-pill" style="display:none"></span></button>
-  <button class="nav" data-page="validation"><span class="ico">✓</span> Scorecard</button>
+  <button class="nav" data-page="validation"><span class="ico">✓</span> Validation</button>
   <div class="navgrp">Other</div>
   <button class="nav" data-page="settings"><span class="ico">⚙</span> Settings</button>
   <div class="sidefoot"><b>Process discipline</b>
-  One decision per trading day at 08:45 MYT → enter at the pre-open level or stand aside → stop · target · 3-session time-stop → scored after the close.
+  Score the week → pick ONE core warrant → plan entry/stop/target before Monday → post-mortem Friday.
   <div style="margin-top:8px;font-size:11px;color:var(--ink3)">Warrants can expire worthless. Analysis tool — not financial advice.</div>
   <div style="margin-top:6px;font-size:10px;color:var(--ink3)" id="side-ver">v–</div></div>
 </aside>
@@ -335,38 +335,53 @@ canvas{width:100%;display:block}
     </div>
   </section>
 
-  <!-- ============ STRATEGY (v3: server decision · plan) ============ -->
+  <!-- ============ STRATEGY ============ -->
   <section class="page" id="page-strategy">
     <div class="grid g2" style="margin-bottom:16px">
       <div class="card">
-        <h3>Today's decision <span class="sub">one per trading day · made server-side at 08:45 MYT · scored after the close</span>
-        <span class="right"><button class="btn sm ghost" id="genStrategy">↻ Reload</button></span></h3>
-        <div id="decision"></div>
+        <h3>Weighted Factor Score <span class="sub">auto-scored from live data · 🔒 locks a factor for manual control · weights editable</span>
+        <span class="right"><button class="btn" id="genStrategy">⚡ Generate strategy</button><button class="btn sm ghost" id="resetFactors">Reset</button></span></h3>
+        <div class="note" id="gen-status" style="margin-bottom:8px">Auto-runs every trading morning (~08:30–09:30) when the app is open. Generate re-fetches all feeds, scores each unlocked factor from evidence, then picks the matching warrant.</div>
+        <div id="factors"></div>
       </div>
       <div class="card">
-        <h3>Plan <span class="sub">entry at the pre-open futures level · stop · target · time-stop</span></h3>
-        <div id="plan"></div>
+        <h3>Verdict</h3>
+        <div class="verdict"><div>
+          <div class="big" id="v-big">–</div>
+          <div class="meter"><div class="pin" id="v-pin" style="left:50%"></div></div>
+          <div class="note" id="v-note"></div>
+        </div></div>
+        <div class="statgrid">
+          <div class="stat"><div class="k">Conviction</div><div class="v" id="v-score">0</div></div>
+          <div class="stat"><div class="k">Direction</div><div class="v" id="v-dir">–</div></div>
+          <div class="stat"><div class="k">Sizing rule</div><div class="v" id="v-size" style="font-size:13px">–</div></div>
+        </div>
+        <div class="note">Bands: |score| &lt; 3 no-trade · 3–5 staggered half-size around binary events · &gt;5 full size. Score is saved automatically.</div>
+        <div class="why" id="v-why" style="margin-top:12px;display:none"></div>
       </div>
     </div>
     <div class="card" style="margin-bottom:16px">
-      <h3>🔔 Level alert <span class="sub">fires once, any day, while the app is open</span></h3>
-      <div class="row" style="align-items:flex-end">
-        <div class="fld">HSI level<input type="number" id="mw-flip" placeholder="e.g. 25050"></div>
+      <h3>🔁 Mid-week regime check <span class="sub">re-scores the fast factors (US/Fed + Sector) vs this week's baseline</span>
+        <span class="right"><button class="btn sm" id="mw-run">Run check</button></span></h3>
+      <div class="why" id="mw-out">Runs automatically after Wednesday's HK close when you hold a position — or press Run check anytime. It compares the two fastest-moving factors against Sunday/Monday's score and calls HOLD / CUT HALF / FLIP with a live exit price.</div>
+      <div class="row" style="margin-top:10px;align-items:flex-end">
+        <div class="fld">Flip-trigger level (HSI)<input type="number" id="mw-flip" placeholder="e.g. 25050"></div>
         <div class="fld">Fires when price is<select id="mw-flipdir"><option value="below">below</option><option value="above">above</option></select></div>
         <button class="btn sm ghost" id="mw-flipsave">Set alert</button>
         <span class="note" id="mw-flipnote" style="margin:0"></span>
       </div>
     </div>
     <div class="card" style="margin-bottom:16px">
-      <h3>Your notes <span class="sub">free text — shown in the briefing</span></h3>
-      <textarea id="plan-notes" style="width:100%;min-height:90px;line-height:1.6"></textarea>
+      <h3>Week plan & catalysts <span class="sub">edit freely — shown in briefing</span></h3>
+      <textarea id="plan" style="width:100%;min-height:120px;line-height:1.6"></textarea>
     </div>
     <div class="card">
-      <h3>📜 Decision history <span class="sub">every decision the pipeline made, with its outcome</span>
-        <span class="right"><button class="btn sm ghost" id="flog-csv">⬇ Scorecard CSV</button></span></h3>
+      <h3>📜 Strategy History <span class="sub">every generated forecast, timestamped with evidence</span>
+        <span class="right"><button class="btn sm ghost" id="flog-csv">⬇ Forecast log CSV</button></span></h3>
       <div id="strat-history"></div>
     </div>
   </section>
+
   <!-- ============ WARRANTS ============ -->
   <section class="page" id="page-warrants">
     <div class="warn" id="wu-warn" style="display:none"></div>
@@ -433,37 +448,46 @@ canvas{width:100%;display:block}
     </div>
   </section>
 
-  <!-- ============ SCORECARD (v3: called days only, paper P&L from decision price to exit) ============ -->
+  <!-- ============ VALIDATION ============ -->
   <section class="page" id="page-validation">
     <div class="grid g4" style="margin-bottom:16px">
-      <div class="card kpi"><div class="lab">Called days</div><div class="val" id="sc-n">–</div><div class="delta" id="sc-nd">–</div></div>
-      <div class="card kpi"><div class="lab">Direction hit rate</div><div class="val" id="sc-hit">–</div><div class="delta" id="sc-hitd">–</div></div>
-      <div class="card kpi"><div class="lab">Paper P&L</div><div class="val mono" id="sc-pnl">–</div><div class="delta" id="sc-pnld">RM5,000 per trade at the plan's size</div></div>
-      <div class="card kpi"><div class="lab">Stood aside</div><div class="val" id="sc-aside">–</div><div class="delta" id="sc-asided">–</div></div>
+      <div class="card kpi"><div class="lab">◎ Overall accuracy</div><div class="val" id="v-all">–</div><div class="delta" id="v-alld">no scored days yet</div><div class="spark" id="v-spark"></div></div>
+      <div class="card kpi"><div class="lab">This week</div><div class="val" id="v-week">–</div><div class="delta" id="v-weekd">–</div></div>
+      <div class="card kpi"><div class="lab">Today</div><div class="val" id="v-today">–</div><div class="delta" id="v-todayd">–</div></div>
+      <div class="card kpi"><div class="lab">Paper P&L (all recs)</div><div class="val mono" id="v-paper">RM 0</div><div class="delta">RM5k on each day's pick, open→close</div></div>
     </div>
-    <div class="grid g2e" style="margin-bottom:16px">
-      <div class="card"><h3>By conviction band & direction</h3><div style="overflow-x:auto"><table id="sc-bands"></table></div>
-        <div class="note">Sizing follows this table, not a label: single-signal days are half size until they earn full size here.</div></div>
-      <div class="card"><h3>How scoring works</h3><div class="why">
-        Every trading day the pipeline records one decision at 08:45 MYT. After the close it scores <b>called days only</b>:<br>
-        <b>Direction</b> — right if the index moved the called way from the <i>decision price</i> to the exit. An overnight gap cannot count as a hit.<br>
-        <b>P&L</b> — RM5,000 (× size multiplier) into the chosen warrant at the offer, out at the stop, the target, or the 3rd close, priced off the issuer sensitivity, or the live closing bid when captured. Spread and brokerage included. If stop and target were both touched in a session, the stop is assumed first.<br>
-        <b>NO-TRADE</b> days are counted, never scored as wins. There is no "level accuracy" score.
-      </div></div>
+    <div class="card" style="margin-bottom:16px">
+      <h3>Daily accuracy — on track vs off track <span class="sub">green ≥6/10 · amber 4–6 · red &lt;4</span>
+      <span class="right"><button class="btn sm" id="v-score-now">Score today now</button></span></h3>
+      <canvas id="v-chart" height="200"></canvas>
     </div>
-    <div class="card">
-      <h3>Called days</h3>
-      <div style="overflow-x:auto"><table id="sc-table"></table></div>
-      <div class="note" id="sc-note"></div>
+    <div class="card" style="margin-bottom:16px">
+      <h3>⏱ Intraday slot scoring <span class="sub">auto-generated & auto-scored at 08:50 · 10:00 · 14:00 · 16:00</span></h3>
+      <div class="note" id="slot-avg" style="margin-bottom:8px"></div>
+      <div style="overflow-x:auto"><table id="slot-table"></table></div>
+      <div class="note">Each slot re-runs the full strategy engine, snapshots its call, and scores itself against the close automatically — no button needed. The 16:00 call is judged against the next session. Honest limit: this scheduler runs while the app is open on any device (phone PWA counts); fully unattended server-side runs are the approved-on-request Worker-cron upgrade.</div>
     </div>
+    <div class="card" style="margin-bottom:16px">
+      <h3>Daily record</h3>
+      <div style="overflow-x:auto"><table id="v-table"></table></div>
+      <div class="note" id="val-note"></div>
+    </div>
+    <div class="card"><h3>How scoring works</h3><div class="why">
+      Each trading day the tool snapshots its own morning recommendation (verdict, conviction, top warrant, watch levels, prices). After the 16:00 HK close it scores itself out of 10:<br>
+      <b>Direction (0–4):</b> did the day close in the called direction? Full marks for a clear move the right way; partial for flat days; zero for wrong-way. NO-TRADE calls earn marks when the day was indeed range-bound (&lt;0.5%).<br>
+      <b>Warrant (0–3):</b> did the recommended warrant's bid actually gain? ≥5% = 3, positive = 2, flat = 1, loss = 0. Uses live end-of-day bid when available, sensitivity-model estimate otherwise (flagged <i>est</i>).<br>
+      <b>Levels (0–3):</b> how close did the actual high/low come to the predicted watch levels? Within 0.4% = 3 · 0.8% = 2 · 1.5% = 1.<br>
+      <b>Overall %</b> = average daily score ÷ 10, weighted by conviction (a high-conviction miss hurts more than a tentative one). Paper P&L simulates RM5,000 into each day's pick at the morning offer, out at the closing bid — the most honest single metric. Days when the app wasn't opened before close are skipped, not guessed.
+    </div></div>
   </section>
+
   <!-- ============ SETTINGS ============ -->
   <section class="page" id="page-settings">
     <div class="grid g2e">
       <div class="card"><h3>Trading defaults</h3>
         <div class="row" style="margin-bottom:10px">
           <div class="fld">Capital (RM)<input type="number" id="set-cap"></div>
-          <div class="fld">Legacy target (unused in v3)<input type="number" id="set-target"></div>
+          <div class="fld">Weekly target (RM)<input type="number" id="set-target"></div>
           <div class="fld">Brokerage/side (RM)<input type="number" id="set-brk"></div>
         </div>
         <div class="row">
@@ -571,7 +595,6 @@ canvas{width:100%;display:block}
   </div>
 </div>
 
-<script src="engine/engine.js"></script>
 <script>
 'use strict';
 /* ================================================================
@@ -590,8 +613,42 @@ const parseNum=s=>{if(s==null)return NaN;return parseFloat((''+s).replace(/[,%]/
 
 /* ---------------- default / seed state ---------------- */
 /* ================================================================
-   ALGO KERNEL retired in v3: all decision logic lives in engine/engine.js (shared with the pipeline + backtest).
-   The browser only renders the pipeline's decision files and runs the same engine locally as a fallback. */
+   ALGO KERNEL — every tunable algorithm lives here, behind a stable contract.
+   To change how the desk thinks, you edit ONLY this object (+ its helper fns).
+   See the "Algorithm authoring guide" doc. Contracts:
+     factors[].score(ctx) -> {score:-2..2, ev:[str], sources:[[label,url]]}  (may be async; null = "skip / keep prior")
+     rank(warrant, rc)    -> {score, notes:[], flags:[], reqIdx, wks, otm, spreadPc}   rc = {px, reqW, wr}
+     price(w, idxLevel, daysFwd) -> number      (simulator pricing model)
+     levels(ctx)          -> {upper, lower, res:[], sup:[], p}   (S/R model)
+   ================================================================ */
+const ALGO={
+  factors:[
+    {key:'china', label:'China macro & policy',      weight:25, score:(ctx)=>factorChina(ctx)},
+    {key:'us',    label:'US market & Fed/rates',     weight:20, score:(ctx)=>factorUS(ctx)},
+    {key:'tech',  label:'HSI technicals',            weight:20, score:(ctx)=>factorTech(ctx)},
+    {key:'sect',  label:'Sector heavyweights',       weight:15, score:(ctx)=>factorSect(ctx)},
+    {key:'flow',  label:'Flows & sentiment',         weight:10, score:(ctx)=>factorFlow(ctx)},
+    {key:'event', label:'Event risk (coming week)',  weight:10, score:(ctx)=>factorEvent(ctx)},
+  ],
+  verdictBands:{noTrade:3, full:5},                 // |conviction| < noTrade = stand aside; > full = full size
+  rankWeights:{feasibility:30, moneyness:25, expiry:20, responsiveness:10, spread:8, theta:7}, // component maxima (edit rankOne to reweight)
+  rank:(w,rc)=>rankOne(w,rc),
+  price:(w,idxLevel,daysFwd)=>priceModel(w,idxLevel,daysFwd),
+  levels:(ctx)=>levelModel(ctx),
+};
+// Back-compat shim: the rest of the app reads FACTORS as [{k,label,w}] — derive it from the kernel so nothing else changes.
+const FACTORS=ALGO.factors.map(f=>({k:f.key,label:f.label,w:f.weight}));
+// Market context — the ONLY input the scoring algorithms should read (mirrors state; swap this to backtest historical data).
+function buildCtx(){return {ohlc:state.ohlc, live:state.live, news:state.news, calendar:state.calendar,
+  warrants:state.warrants, settings:state.settings, today:todayISO()};}
+// Factor score adapters — each wraps a scorer + attaches evidence sources. Return null to skip (keeps prior score).
+function factorTech(ctx){const t=autoTech(ctx);return t?{score:t.score,ev:t.ev,sources:[SRC.hsi(),SRC.yahoo()]}:null;}
+async function factorUS(ctx){try{const u=await autoUS(ctx);return {score:u.score,ev:u.ev,sources:[['Yahoo — S&P 500','https://finance.yahoo.com/quote/%5EGSPC/'],['Yahoo — VIX','https://finance.yahoo.com/quote/%5EVIX/']]};}
+  catch(e){return {score:0,ev:['US quote fetch failed — scored neutral, set manually if you know the close'],sources:[SRC.yahoo()]};}}
+function factorChina(ctx){const cn=scanNews(['china']);return cn?{score:cn.score,ev:['news sentiment ('+(cn.pos||0)+' pos / '+(cn.neg||0)+' neg keywords): '+cn.hits.slice(0,4).join(', ')],sources:[SRC.mqnews(),SRC.tecal()]}:{score:0,ev:['no news cached — neutral; refresh or score manually'],sources:[SRC.mqnews(),SRC.tecal()]};}
+function factorSect(ctx){const se=scanNews(['sect']);return se?{score:se.score,ev:['heavyweight-sector news sentiment: '+se.hits.slice(0,4).join(', ')],sources:[SRC.mqnews()]}:{score:0,ev:['no news cached — neutral'],sources:[SRC.mqnews()]};}
+function factorFlow(ctx){const fl=autoFlows(ctx);return fl?{score:fl.score,ev:fl.ev,sources:[SRC.hsi()]}:null;}
+function factorEvent(ctx){const evt=autoEvent(ctx);return {score:evt.score,ev:evt.ev,sources:[SRC.hkex(),SRC.tecal(),SRC.mqnews()]};}
 const SEED_OHLC=[
  {d:'2026-06-29',o:22827.65,h:23183.17,l:22783.64,c:23026.68},
  {d:'2026-06-30',o:23007.87,h:23086.85,l:22685.14,c:22881.02},
@@ -621,9 +678,8 @@ const SEED_PLAN=`WEEK 13–17 JUL 2026 · verdict LONG (+4.0, staggered)
 • Aggressive alt: CWQ6 half-size only on CPI+GDP double-beat. Watch AI lockup-expiry supply on HK tech.`;
 
 function defaultState(){return {
-  schemaVersion:11,
+  schemaVersion:10,
   activeWarrant:null,
-  decision:null,decisionAt:0,scorecard:null,baseline:null,localDecision:null,   // v3: pipeline files + local fallback
   settings:{capital:5000,target:1000,brokerage:10,refreshSec:60,mode:'auto',
     proxies:['https://corsproxy.io/?url=','https://api.allorigins.win/raw?url=','https://api.codetabs.com/v1/proxy?quest='],
     aiKey:'',aiModel:'claude-haiku-4-5-20251001',extraHolidays:'',
@@ -696,11 +752,6 @@ try{
     if(!('extNarrative' in state))state.extNarrative=null;
     if(state.plan===SEED_PLAN)state.plan='';   // retire the old static week plan; keep any custom notes
     state.schemaVersion=10;
-  }
-  if(state.schemaVersion<11){ // v10 -> v11: server decision + scorecard; in-browser strategy engine retired
-    ['decision','scorecard','baseline','localDecision'].forEach(k=>{if(!(k in state))state[k]=null;});
-    state.decisionAt=0;
-    state.schemaVersion=11;
   }
 }catch(e){state=defaultState();}
 let syncT=null;
@@ -938,9 +989,9 @@ function checkMarket(){
   if(inHours&&state.liveAt&&state.settings.mode!=='off'&&Date.now()-state.liveAt>20*60000){
     bar.classList.add('show','warn');txt.textContent='⚠ No fresh HSI quote for '+Math.round((Date.now()-state.liveAt)/60000)+' min during trading hours — possible trading halt, data outage, or connection issue. Check a second source before acting.';return;
   }
-  // v3: warn when the pipeline has not produced today's decision
-  if(mins>=555&&location.protocol.startsWith('http')&&(!state.decision||state.decision.date!==iso)){
-    bar.classList.add('show','warn');txt.textContent='⏳ No server decision for today'+(state.decision?' (latest '+state.decision.date+')':'')+' — the 08:45 MYT run may not have happened yet. The local engine is shown meanwhile (no VIX/US/China inputs).';return;
+  // U7: warn while today's validation snapshot hasn't been captured yet
+  if(mins<955&&!(state.validation&&state.validation.days.some(r=>r.d===iso))){
+    bar.classList.add('show','warn');txt.textContent='⏳ No validation snapshot for today yet — it captures automatically once live data is fresh (before 15:55). Press ⟳ Refresh if this persists, or today won\'t be scored.';return;
   }
   if(roll){
     bar.classList.add('show','info');txt.textContent='ℹ HSI futures rollover on '+roll.date+' — the live matrix switches contract; warrant prices may gap vs spot. Plan entries/exits around it.';return;
@@ -996,9 +1047,10 @@ async function refreshAll(manual){
   loader(80,'4/4 · News & HK calendar…');
   try{await fetchNews();ok++;}catch(e){failed.push('news');}
   try{await fetchCalendar();}catch(e){}
-  // v3: today's decision + the scorecard come from the pipeline's files (same origin)
-  try{await fetchDecision(false);}catch(e){}
-  state.localDecision=null;
+  // P5: pull server-side cron ticks and backfill any slots missed while all devices were closed
+  try{const tk=await fetchTicks();const nb=backfillSlots(tk);if(nb&&manual)snack('↻ Backfilled '+nb+' slot record'+(nb>1?'s':'')+' from Worker cron');}catch(e){}
+  // R4: pull cron warrant-matrix snapshots; seed term sheets if the app was closed at snapshot time
+  try{const mx=await fetchMatrix();applyMatrix(mx);}catch(e){}
   loader(100,failed.length?'Done — '+failed.join(', ')+' failed':'All feeds updated ✓');
   checkMarket();checkAlerts();
   save();renderAll();updateFresh();
@@ -1032,7 +1084,21 @@ function levelModel(ctx){
   const sup=[['Swing low (10d)',p.swingL],['Day S2',p.dayS2],['Day S1',p.dayS1],['Weekly pivot',p.wkP],['Week low',p.wL]].filter(x=>x[1]<px).sort((a,b)=>b[1]-a[1]);
   return {upper:res[0]||null,lower:sup[0]||null,res,sup,p};
 }
-function watchLevels(){return levelModel({ohlc:state.ohlc,live:state.live});}   // pivot S/R (informational)
+function watchLevels(){return ALGO.levels(buildCtx());}   // public API — unchanged behaviour, logic now in the kernel
+
+/* ---------------- strategy score ---------------- */
+function wt(k){const w=state.settings.weights||{};const f=FACTORS.find(x=>x.k===k);return w[k]!=null?w[k]:(f?f.w:0);}
+function conviction(){
+  let s=0,tw=0;FACTORS.forEach(f=>{s+=(state.factors[f.k]||0)*wt(f.k);tw+=wt(f.k);});
+  return tw?+(s/tw*5).toFixed(1):0;
+}
+function verdict(){
+  const c=conviction();
+  if(Math.abs(c)<ALGO.verdictBands.noTrade)return {c,dir:null,label:'NO-TRADE',cls:'amber',size:'Stand aside / half-size at defined pullback only'};
+  const dir=c>0?'C':'P';
+  return {c,dir,label:c>0?'LONG · CALLS':'SHORT · PUTS',cls:c>0?'green':'red',
+    size:Math.abs(c)<=ALGO.verdictBands.full?'Staggered: half before / half after biggest binary event':'Full size allowed — still respect stop'};
+}
 
 /* ---------------- ranking engine ---------------- */
 function weeksTo(exp){if(!exp)return 0;return (new Date(exp)-Date.now())/(7*864e5);}
@@ -1046,7 +1112,7 @@ function weekRangePct(){
 function rankOne(w,rc){
   const r={w,score:0,notes:[],flags:[]};
   const px=w.ask||w.bid;if(!px||!w.eg){r.score=-1;r.flags.push('no price');return r;}
-  const reqIdx=rc.atrPct!=null?rc.atrPct:rc.reqW/w.eg; // v3: the target move is 1.5×ATR for every warrant (no gearing bias)
+  const reqIdx=rc.reqW/w.eg; // required index % move
   r.reqIdx=reqIdx;
   const wks=weeksTo(w.expiry);r.wks=wks;
   const otm=w.type==='C'?(w.strike-rc.px)/rc.px*100:(rc.px-w.strike)/rc.px*100;
@@ -1056,7 +1122,7 @@ function rankOne(w,rc){
   // 1. required-move feasibility (0-30)
   const feas=Math.max(0,Math.min(1,(0.6*rc.wr-reqIdx)/(0.6*rc.wr)));s+=feas*30;
   if(reqIdx>0.6*rc.wr){r.flags.push('needs '+reqIdx.toFixed(1)+'% move — exceeds 60% of weekly range');}
-  else r.notes.push('1.5×ATR target = '+reqIdx.toFixed(2)+'% index → warrant ≈ +'+(reqIdx*w.eg).toFixed(0)+'% (weekly range '+rc.wr.toFixed(1)+'%)');
+  else r.notes.push('needs only '+reqIdx.toFixed(2)+'% index move for +'+rc.reqW.toFixed(0)+'% (range '+rc.wr.toFixed(1)+'%)');
   // 2. moneyness (0-25): ideal 2-5% OTM
   let ms;
   if(otm<-2){ms=14;r.notes.push('ITM — lower gearing but safer');}
@@ -1085,13 +1151,13 @@ function rankOne(w,rc){
 }
 function rankWarrants(){
   const v=verdict();
-  const D=currentRec().decision;
-  const rc={px:state.live.px, reqW:20, atrPct:(D&&D.atr&&state.live.px)?D.atr*1.5/state.live.px*100:null, wr:weekRangePct()};
-  const list=state.warrants.map(w=>rankOne(w,rc));
+  const rc={px:state.live.px, reqW:state.settings.target/state.settings.capital*100, wr:weekRangePct()};
+  const list=state.warrants.map(w=>ALGO.rank(w,rc));
   const dir=v.dir;
   const inDir=list.filter(r=>dir&&r.w.type===dir&&r.score>0).sort((a,b)=>b.score-a.score);
   return {all:list.sort((a,b)=>b.score-a.score),inDir,v};
 }
+function topPick(){const r=rankWarrants();return r.inDir[0]||null;}
 
 /* ---------------- simulator model ----------------
    Linear sensitivity model: dW = ±(dU/sens)*tick, decay = theta%/day.
@@ -1106,7 +1172,7 @@ function priceModel(w,idxLevel,daysFwd){
   px=px*(1-th*Math.max(0,daysFwd));
   return Math.max(px,0.005);
 }
-function warrantPriceAt(w,idxLevel,daysFwd){return priceModel(w,idxLevel,daysFwd);}
+function warrantPriceAt(w,idxLevel,daysFwd){return ALGO.price(w,idxLevel,daysFwd);}  // public API — unchanged behaviour
 function tickDn(x){return Math.floor(x/TICK+1e-9)*TICK;}
 function simulate(w,cap,tgt,inIdx,outIdx,days,thetaOverride,brk){
   const wSim=Object.assign({},w);if(thetaOverride!=null&&!isNaN(thetaOverride))wSim.theta=-Math.abs(thetaOverride);
@@ -1129,7 +1195,7 @@ function simulate(w,cap,tgt,inIdx,outIdx,days,thetaOverride,brk){
 }
 
 /* ================= RENDERING ================= */
-const PAGES={dash:'Dashboard',strategy:'Decision & Plan',warrants:'Warrant Screener',sim:'Simulator',portfolio:'Portfolio',watchlist:'Watchlist',validation:'Scorecard',settings:'Settings'};
+const PAGES={dash:'Dashboard',strategy:'Strategy Score',warrants:'Warrant Screener',sim:'Simulator',portfolio:'Portfolio',watchlist:'Watchlist',validation:'Validation',settings:'Settings'};
 document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('on',x===b));
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
@@ -1158,10 +1224,10 @@ $('themeBtn').onclick=()=>{
   const seq=['auto','light','dark'];
   state.settings.theme=seq[(seq.indexOf(state.settings.theme||'auto')+1)%3];
   save();applyTheme();
-  drawChart();runSimRedraw();renderScorecard(); // re-read palette
+  drawChart();runSimRedraw();renderValidation(); // re-read palette
   snack('Theme: '+state.settings.theme);
 };
-if(window.matchMedia)matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{applyTheme();drawChart();renderScorecard();});
+if(window.matchMedia)matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{applyTheme();drawChart();renderValidation();});
 /* active-warrant ticker → open in simulator */
 $('tkr-wnt').onclick=()=>{const a=activeWarrantObj();if(a)openInSim(a.w.sym);};
 /* mobile hamburger */
@@ -1235,10 +1301,9 @@ function renderKPIs(){
       return r.d+' · close '+fmt(r.c)+(i?' · '+(chg>=0?'+':'')+fmt(chg)+' ('+(chg>=0?'+':'')+pc+'%)':'')+(r.self?' · built from live quotes':'');}));
   const v=verdict();
   $('k-verdict').innerHTML='<span class="tag '+v.cls+'" style="font-size:15px;padding:6px 14px">'+v.label+'</span>';
-  $('k-conv').textContent='conviction '+(v.c>0?'+':'')+v.c+' / 10 · '+(v.src==='server'?'server '+v.d:'local engine')+' · '+(v.stance||'');
-  const DF=currentRec().decision.factors||{};const fk=Object.keys(DF);
-  sparkbars($('spark-conv'),fk.length?fk.map(k=>DF[k].score||0):[0],v.c>=0?cvar('--green','#16a34a'):cvar('--red','#dc2626'),
-    fk.map(k=>DF[k].label+': '+((DF[k].score||0)>0?'+':'')+(DF[k].score||0)+' of ±2 · weight '+DF[k].weight+'%'));
+  $('k-conv').textContent='conviction '+(v.c>0?'+':'')+v.c+' / 10';
+  sparkbars($('spark-conv'),FACTORS.map(f=>state.factors[f.k]||0),v.c>=0?cvar('--green','#16a34a'):cvar('--red','#dc2626'),
+    FACTORS.map(f=>f.label+': score '+((state.factors[f.k]||0)>0?'+':'')+(state.factors[f.k]||0)+' of ±2 · weight '+wt(f.k)+'%'+(state.flocks[f.k]?' · 🔒 manual':'')));
   // open pnl
   const pos=state.portfolio.open;let pnl=0,val=0;
   pos.forEach(t=>{const w=state.warrants.find(x=>x.sym===t.sym);const mark=w?w.bid:t.entry;pnl+=t.units*(mark-t.entry)-2*state.settings.brokerage;val+=t.units*mark;});
@@ -1249,7 +1314,7 @@ function renderKPIs(){
     pos.length?pos.map(t=>{const w=state.warrants.find(x=>x.sym===t.sym);const p=t.units*((w?w.bid:t.entry)-t.entry)-2*state.settings.brokerage;return t.sym+' × '+fmt(t.units)+' @ '+t.entry.toFixed(3)+' → '+fmtRM(p);}):['No open positions — bars are placeholders','No open positions','No open positions']);
   const tp=topPick();
   $('k-pick').textContent=tp?tp.w.sym:'–';
-  $('k-pickd').textContent=tp?((tp.w.type==='C'?'CALL':'PUT')+' '+fmt(tp.w.strike)+' · '+(verdict().stance||'')):(verdict().dir?'no vehicle passes the rules':'stand aside today');
+  $('k-pickd').textContent=tp?('rank score '+tp.score+'/100 · '+(tp.w.type==='C'?'CALL':'PUT')+' '+fmt(tp.w.strike)):(verdict().dir?'run screener':'no-trade week');
   const cand=rankWarrants().inDir.slice(0,4);
   sparkbars($('spark-pick'),cand.length?cand.map(r=>r.score):[1],cvar('--amber','#d97706'),
     cand.length?cand.map((r,i)=>(i===0?'★ ':'')+r.w.sym+': rank '+r.score+'/100 — '+(r.notes[0]||r.flags[0]||'')):['No candidates ranked yet']);
@@ -1391,9 +1456,10 @@ function warrantLine(r,label){
   const w=r.w;return '<b>'+label+':</b> '+w.sym+' ('+fmt(w.strike)+' '+(w.type==='C'?'call':'put')+', exp '+(w.expiry||'?')+', '+(w.eg||'?')+'x, bid '+(w.bid??'–')+') — rank '+r.score+'/100'+(r.notes[0]?', '+r.notes[0]:'');
 }
 function catalystSplit(){
-  const cat=[],dmp=[];const DF=currentRec().decision.factors||{};
-  Object.keys(DF).forEach(k=>{const f=DF[k];const sc=f.score||0;const note=(f.evidence||[])[0]||'';
-    if(sc>0)cat.push(f.label+' (+'+sc+'): '+note);else if(sc<0)dmp.push(f.label+' ('+sc+'): '+note);});
+  const cat=[],dmp=[];
+  FACTORS.forEach(f=>{const sc=state.factors[f.k]||0;const note=(state.fnotes[f.k]||'').replace('[auto] ','').split(' · ')[0];
+    if(sc>0)cat.push(f.label+' (+'+sc+'): '+note);
+    else if(sc<0)dmp.push(f.label+' ('+sc+'): '+note);});
   return {cat,dmp};
 }
 function weekEventsText(){
@@ -1417,7 +1483,7 @@ function buildWeeklyOutlook(){
   const dh=news.find(n=>/highlight/i.test(n.kind)),eod=news.find(n=>/insight|end of day/i.test(n.kind));
   const ext=state.extNarrative&&state.extNarrative.text?state.extNarrative.text:'';
   let h='<div style="font-weight:800;color:var(--accent);font-size:15px">📅 WEEKLY OUTLOOK · week of '+mondayOf(todayISO())+'</div>';
-  h+='<br><b>1 · Global &amp; HSI.</b> HSI '+fmt(state.live.px)+' ('+(state.live.chg>=0?'+':'')+fmt(state.live.chg)+' last'+(wk!=null?', '+(wk>=0?'+':'')+wk.toFixed(1)+'% on the week':'')+'). '+((currentRec().decision.factors||{}).us?'US — '+currentRec().decision.factors.us.evidence.join(', '):'')+'.'+(ext?' <i>'+ext.slice(0,160)+'…</i>':'');
+  h+='<br><b>1 · Global &amp; HSI.</b> HSI '+fmt(state.live.px)+' ('+(state.live.chg>=0?'+':'')+fmt(state.live.chg)+' last'+(wk!=null?', '+(wk>=0?'+':'')+wk.toFixed(1)+'% on the week':'')+'). '+(state.fnotes.us?'US/global — '+state.fnotes.us.replace('[auto] ',''):'')+'.'+(ext?' <i>'+ext.slice(0,160)+'…</i>':'');
   if(p)h+='<br><b>2 · Ranges.</b> Weekly band ≈ <b>'+fmt(p.wkS1)+' – '+fmt(p.wkR1)+'</b> (weekly pivot '+fmt(p.wkP)+'); typical daily swing ≈ '+(drange?fmt(drange)+' pts':'–')+'.';
   h+='<br><b>3 · Calendar.</b> '+weekEventsText();
   h+='<br><b>4 · Rollover.</b> '+(roll?('Next HSI futures rollover <b>'+roll.date+'</b> ('+Math.max(0,Math.round((new Date(roll.date)-Date.now())/864e5))+' days) — the live matrix switches contract; warrant prices can gap vs spot, and positions should not be carried across it.'):'No rollover flagged in the coming window.');
@@ -1429,7 +1495,7 @@ function buildWeeklyOutlook(){
 }
 function buildDailyPlan(){
   const v=verdict(),wl=watchLevels(),p=wl?wl.p:null,tp=topPick();
-  const plan=currentRec().plan,drange=dailyRangeEst();
+  const plan=tp?planFor(tp,wl):null,drange=dailyRangeEst();
   let h='<div style="font-weight:800;color:var(--accent);font-size:15px">☀ DAILY PLAN · '+todayISO()+'</div>';
   h+='<br><b>Bias:</b> '+v.label+' ('+(v.c>0?'+':'')+v.c+'/10) — '+v.size+'.';
   if(p)h+='<br><b>Today\'s range:</b> '+fmt(p.dayS1)+' – '+fmt(p.dayR1)+' (pivot '+fmt(p.dayP)+(drange?', ~'+fmt(drange)+'pt swing':'')+').';
@@ -1458,7 +1524,7 @@ async function genOutlook(kind,manual){
   if(outlookRunning)return;outlookRunning=true;
   try{
     if(dataAge()==null||dataAge()>20)await refreshAll(false);
-    try{await fetchDecision(false);}catch(e){}
+    if(!state.strategies.some(r=>r.d===todayISO())){try{await generateStrategy(false);}catch(e){}}
     try{await fetchExternal();}catch(e){}
     if(!state.outlook)state.outlook={weekly:null,daily:null};
     if(kind==='weekly')state.outlook.weekly=buildWeeklyOutlook();
@@ -1505,7 +1571,86 @@ function bindWl(root){
     save();renderAll();
   });
 }
-$('plan-notes').onchange=()=>{state.plan=$('plan-notes').value;save();renderBriefing();};
+function renderRec(){
+  const tp=topPick(),v=verdict();
+  const el=$('rec-card');
+  if(!v.dir){el.innerHTML='<div class="empty"><div class="big">⏸</div>No-trade week (|score| < 3).<br>Best trade is no trade — reassess after the next catalyst.</div>';$('rec-wl').innerHTML='';return;}
+  if(!tp){el.innerHTML='<div class="empty">No '+(v.dir==='C'?'call':'put')+' passes the filters — fetch the live universe.</div>';$('rec-wl').innerHTML='';return;}
+  const w=tp.w;const s=state.settings;
+  const sim=simulate(w,s.capital,s.target,state.live.px,state.live.px+(v.dir==='C'?1:-1)*tp.reqIdx/100*state.live.px,3,null,s.brokerage);
+  el.innerHTML=
+   '<div class="row" style="justify-content:space-between;margin-bottom:10px"><div>'+
+   '<span style="font-size:20px;font-weight:800">'+w.sym+'</span> <span class="tag grey mono">'+(w.code||'')+'</span> '+
+   '<span class="tag '+(w.type==='C'?'green':'red')+'">'+(w.type==='C'?'CALL':'PUT')+'</span></div>'+
+   '<span class="tag purple">rank '+tp.score+'/100</span></div>'+
+   '<div class="statgrid">'+
+   '<div class="stat"><div class="k">Strike</div><div class="v mono">'+fmt(w.strike)+'</div></div>'+
+   '<div class="stat"><div class="k">Expiry</div><div class="v" style="font-size:13px">'+(w.expiry||'–')+'</div></div>'+
+   '<div class="stat"><div class="k">Bid / Offer</div><div class="v mono" style="font-size:14px">'+(w.bid??'–')+' / '+(w.ask??'–')+'</div></div>'+
+   '<div class="stat"><div class="k">Eff. gearing</div><div class="v">'+(w.eg||'–')+'x</div></div>'+
+   '<div class="stat"><div class="k">1% HSI ≈</div><div class="v">'+(w.eg?w.eg.toFixed(1)+'%':'–')+'</div></div>'+
+   '<div class="stat"><div class="k">Idx move for +'+(s.target/s.capital*100).toFixed(0)+'%</div><div class="v">'+tp.reqIdx.toFixed(2)+'%</div></div>'+
+   '</div>'+
+   '<div class="why" style="margin-top:12px"><b>Why:</b> '+tp.notes.join(' · ')+
+   (tp.flags.length?'<br><b style="color:var(--amber)">Watch:</b> '+tp.flags.join(' · '):'')+
+   '<br><b>Sized at '+fmtRM(s.capital)+':</b> '+(sim.error?sim.error:'~'+fmt(sim.units)+' units at '+sim.buy.toFixed(3)+' · target '+fmtRM(s.target)+' needs HSI ≈ '+fmt(sim.idxForTarget)+' · breakeven ≈ '+fmt(sim.idxBE))+'</div>'+
+   '<div class="row" style="margin-top:10px"><button class="btn sm" data-sim="'+w.sym+'">Open in simulator →</button></div>';
+  $('rec-wl').innerHTML=wlButton(w.sym);
+  bindWl($('rec-card').parentElement);
+  el.querySelectorAll('[data-sim]').forEach(b=>b.onclick=()=>{openInSim(b.dataset.sim);});
+}
+/* ------- strategy page ------- */
+function renderFactors(){
+  const el=$('factors');el.innerHTML='';
+  FACTORS.forEach(f=>{
+    const v=state.factors[f.k]||0;
+    const locked=!!state.flocks[f.k];
+    const d=document.createElement('div');
+    d.innerHTML='<div class="fct"><span class="nm">'+f.label+
+    ' <button class="mv-btn" data-lock="'+f.k+'" title="'+(locked?'Locked — auto engine will not overwrite':'Unlocked — auto engine scores this')+'" style="'+(locked?'background:var(--amber-soft);color:var(--amber)':'')+'">'+(locked?'🔒':'🔓')+'</button></span>'+
+    '<input type="number" class="wt" data-w="'+f.k+'" value="'+wt(f.k)+'" min="0" max="60" style="width:52px;padding:3px 6px;font-size:11px">'+
+    '<input type="range" min="-2" max="2" step="1" value="'+v+'" data-f="'+f.k+'">'+
+    '<span class="sc '+(v>0?'pos':v<0?'neg':'neu')+'">'+(v>0?'+':'')+v+'</span></div>'+
+    '<textarea class="fnote" data-fn="'+f.k+'" placeholder="evidence…">'+(state.fnotes[f.k]||'')+'</textarea>';
+    el.appendChild(d);
+  });
+  el.querySelectorAll('[data-lock]').forEach(b=>b.onclick=()=>{
+    state.flocks[b.dataset.lock]=!state.flocks[b.dataset.lock];save();renderFactors();
+  });
+  el.querySelectorAll('[data-w]').forEach(inp=>inp.onchange=()=>{
+    state.settings.weights[inp.dataset.w]=Math.max(0,Math.min(60,+inp.value||0));
+    const sum=FACTORS.reduce((a,f)=>a+wt(f.k),0);
+    if(sum!==100)snack('Weights sum to '+sum+'% — scores are normalised, but 100% is cleaner');
+    save();renderVerdict();renderKPIs();renderRec();renderUniverse();
+  });
+  el.querySelectorAll('input[type=range]').forEach(r=>{
+    r.oninput=()=>{ // light update: don't rebuild DOM under the user's finger
+      const v=+r.value;state.factors[r.dataset.f]=v;
+      const sc=r.parentElement.querySelector('.sc');
+      sc.textContent=(v>0?'+':'')+v;sc.className='sc '+(v>0?'pos':v<0?'neg':'neu');
+      renderVerdict();
+    };
+    r.onchange=()=>{save();renderKPIs();renderBriefing();renderRec();renderUniverse();};
+  });
+  el.querySelectorAll('[data-fn]').forEach(t=>t.onchange=()=>{state.fnotes[t.dataset.fn]=t.value;save();});
+  renderVerdict();
+}
+function renderVerdict(){
+  const v=verdict();
+  $('v-big').innerHTML='<span class="tag '+v.cls+'" style="font-size:17px;padding:8px 18px">'+v.label+'</span>';
+  $('v-score').textContent=(v.c>0?'+':'')+v.c;
+  $('v-dir').textContent=v.dir==='C'?'Calls':v.dir==='P'?'Puts':'None';
+  $('v-size').textContent=v.size;
+  $('v-pin').style.left=(50+v.c*5)+'%';
+  $('v-note').textContent='Move a slider to re-score. The verdict drives the screener ranking and the recommendation card.';
+  const lastS=state.strategies&&state.strategies[state.strategies.length-1];
+  if($('v-why')){
+    if(lastS){$('v-why').style.display='';$('v-why').innerHTML=whyHTML(lastS);}
+    else $('v-why').style.display='none';
+  }
+}
+$('resetFactors').onclick=()=>{FACTORS.forEach(f=>state.factors[f.k]=0);save();renderFactors();renderAll();};
+$('plan').onchange=()=>{state.plan=$('plan').value;save();renderBriefing();};
 /* ------- warrants page ------- */
 function renderUniverse(){
   const {all,v}=rankWarrants();
@@ -1514,7 +1659,8 @@ function renderUniverse(){
   const rows=all.filter(r=>filt==='all'||(filt==='dir'?(v.dir&&r.w.type===v.dir):r.w.type===filt))
     .filter(r=>!q||(r.w.sym+' '+(r.w.code||'')).toUpperCase().replace(/[^A-Z0-9]/g,'').includes(q));
   const tp=topPick();
-  let h='<tr><th></th><th>Warrant</th><th>Type</th><th>Strike</th><th>Expiry</th><th>Bid/Offer</th><th>Gearing</th><th>Sens.</th><th>IV</th><th>θ/day</th><th>Warrant % at 1.5×ATR</th><th>Rank</th><th></th></tr>';
+  const reqW=(state.settings.target/state.settings.capital*100).toFixed(0);
+  let h='<tr><th></th><th>Warrant</th><th>Type</th><th>Strike</th><th>Expiry</th><th>Bid/Offer</th><th>Gearing</th><th>Sens.</th><th>IV</th><th>θ/day</th><th>Idx move for +'+reqW+'%</th><th>Rank</th><th></th></tr>';
   rows.forEach(r=>{
     const w=r.w;const hl=tp&&tp.w.sym===w.sym;
     h+='<tr class="'+(hl?'hl':'')+'" data-row="'+w.sym+'" style="cursor:pointer">'+
@@ -1524,7 +1670,7 @@ function renderUniverse(){
     '<td class="mono">'+fmt(w.strike)+'</td><td>'+(w.expiry||'–')+'</td>'+
     '<td class="mono">'+(w.bid??'–')+' / '+(w.ask??'–')+'</td>'+
     '<td>'+(w.eg||'–')+'x</td><td>'+(w.sens||'–')+'</td><td>'+(w.iv||'–')+'%</td><td>'+(w.theta||'–')+'%</td>'+
-    '<td>'+(r.reqIdx?'+'+(r.reqIdx*(r.w.eg||0)).toFixed(0)+'%':'–')+'</td>'+
+    '<td>'+(r.reqIdx?r.reqIdx.toFixed(2)+'%':'–')+'</td>'+
     '<td><b style="color:'+(r.score>=70?'var(--green)':r.score>=45?'var(--amber)':'var(--ink3)')+'">'+Math.max(0,r.score)+'</b></td>'+
     '<td>'+wlButton(w.sym)+'</td></tr>';
   });
@@ -1539,10 +1685,10 @@ function renderUniverse(){
   if(tp){
     const w=tp.w;
     $('wu-why').innerHTML='<b>'+w.sym+' ('+(w.code||'')+') — '+(w.type==='C'?'CALL':'PUT')+' '+fmt(w.strike)+', expiry '+w.expiry+'.</b><br>'+
-    'Direction comes from today\'s decision ('+(v.c>0?'+':'')+v.c+' → '+(v.dir==='C'?'calls':'puts')+'). Chosen by the fixed vehicle rules: '+tp.notes.join('; ')+'.'+
+    'Direction comes from the strategy score ('+(v.c>0?'+':'')+v.c+' → '+(v.dir==='C'?'calls':'puts')+'). Among '+all.filter(x=>x.w.type===v.dir).length+' '+(v.dir==='C'?'calls':'puts')+', it ranks #1 at '+tp.score+'/100 because: '+tp.notes.join('; ')+'.'+
     (tp.flags.length?'<br><b style="color:var(--amber)">Caveats:</b> '+tp.flags.join('; ')+'.':'')+
-    '<br>The rank column below is informational (feasibility of a 1.5×ATR move, moneyness, expiry, responsiveness, spread, theta).';
-  } else $('wu-why').textContent=v.dir?'No vehicle passes the rules — see the Strategy tab for the rejected list.':'Stand aside today — ranking is informational.';
+    '<br>Runners-up: '+rankWarrants().inDir.slice(1,4).map(r=>'<b>'+r.w.sym+'</b> ('+r.score+') — '+(r.flags[0]||r.notes[0]||'')).join(' · ');
+  } else $('wu-why').textContent=v.dir?'Fetch the live universe to rank candidates.':'No-trade week — ranking suspended.';
 }
 $('wu-filter').onchange=renderUniverse;
 $('wu-search').oninput=renderUniverse;
@@ -1921,14 +2067,8 @@ $('wl-refresh').onclick=async()=>{
 };
 /* ------- settings ------- */
 /* ================= VERSION & CHANGELOG ================= */
-const APP_VERSION='3.0.0';
+const APP_VERSION='2.4.0';
 const CHANGELOG=[
-  {v:'3.0.0',d:'2026-09-19',t:'Server-side decision, validated signals, honest scorecard',items:[
-    'One decision per trading day made by GitHub Actions at 08:45 MYT and scored after the close; the app is now a viewer (local engine as fallback). No more tab-open scheduler, slot flip-flops or stale-slider snapshots.',
-    'Engine rebuilt on the only signals that held in both halves of a 2-year test: fade stretched closes, fade outsized prior-day moves, fade large opening gaps over a 3-session hold, lean long in VIX panic. Momentum-following (the old tech factor) lost in both halves and is gone. US/China are context, weight 0.',
-    'Event risk (rollover, holiday) sets size, never direction. Plan: enter at the pre-open futures level, stop = nearer of 1×ATR or −15% premium, target 1.5×ATR, flat by the 3rd close. Vehicle by fixed rules, locked for the week.',
-    'Scorecard counts called days only, judges direction from the decision price (gaps cannot count), drops level scoring, and shows paper P&L by band. RM1,000 weekly target retired; expected RM comes from ATR × gearing.',
-    'Backtest gate in CI: v3 must beat the v2.4.0 baseline on the stored 2-year history (v3 +RM4,521 vs −RM7,448). Rollback: tag v2.4.0 / index_v2.html.']},
   {v:'2.4.0',d:'2026-07-20',t:'Auto Weekly Outlook & Daily Plan',items:[
     'Morning Briefing now auto-builds a Weekly Outlook (Mondays ~07:00 KUL) and a Daily Plan (each morning ~07:00) instead of a static plan.',
     'Both cover: global & HSI performance, weekly/daily ranges, calendar events, futures-rollover impact, best call + best put picks, S/R + pivots, and catalysts vs dampeners — with clickable sources.',
@@ -2062,190 +2202,285 @@ $('wipeBtn').onclick=()=>{
   if(!confirm('Wipe ALL local data (portfolio, watchlist, scores)? Export a backup first.'))return;
   state=defaultState();save();renderAll();snack('Reset to defaults');
 };
-/* ================= v3 DESK: server decision · plan · scorecard (engine/engine.js is the single source of logic) ================= */
-const LEX={ // used only for briefing text and the chat "event" scan — never for direction
-  pos:['stimulus','rate cut','cuts rate','easing','beat','beats','rally','rallied','surge','gain','gains','optimism','inflow','record high','upgrade','rebound','risk-on','above expectations','tops estimates'],
-  neg:['tariff','sanction','miss','missed','slump','fell','weak','decline','outflow','crackdown','default','tension','war','downgrade','sell-off','selloff','plunge','risk-off','below expectations','disappointing','correction'],
+/* ================= STRATEGY ENGINE (auto-scoring recommendation) ================= */
+const LEX={ // P2: lexicon v2
+  pos:['stimulus','rate cut','cuts rate','easing','support','beat','beats','rally','rallied','surge','surged','gain','gains','climbed','optimism','inflow','record high','boost','upgrade','strong','rebound','expansion','higher','risk appetite','risk-on','oversubscribed','above expectations','tops estimates','exceeds','stronger than expected','fresh high','breakout','accumulation'],
+  neg:['tariff','sanction','miss','missed','slump','fell','weak','decline','declined','outflow','crackdown','default','tension','war','downgrade','sell-off','selloff','drop','lockup','plunge','contraction','lower','halt','risk-off','below expectations','disappointing','profit-taking','overheating','margin call','weaker than expected','correction'],
+  china:['china','beijing','pboc','yuan','mainland','gdp','pmi','property','stimulus','exports','trade balance','lpr','shanghai','politburo'],
+  sect:['tencent','alibaba','meituan','baidu','jd','byd','xiaomi','tech','hstech','internet','semiconductor','ai ','chip','earnings','hsbc','aia','bank'],
   event:['cpi','fomc','fed decision','gdp release','payrolls','rate decision','election','due this week','expiry'],
 };
-function scanNews(cats){ // returns {score,-2..2, hits:[]} — display only
+function scanNews(cats){ // returns {score,-2..2, hits:[], title, link}
   if(!state.news||!state.news.items||!state.news.items.length)return null;
+  const text=state.news.items.map(n=>(n.title+' '+n.body)).join(' ').toLowerCase();
   const sentences=state.news.items.map(n=>(n.title+'. '+n.body)).join(' ').toLowerCase().split(/[.;]\s+/);
   let pos=0,neg=0;const hits=[];
   sentences.forEach(s=>{
-    if(!cats.some(c=>(LEX[c]||[]).some(k=>s.includes(k))))return;
+    if(!cats.some(c=>LEX[c].some(k=>s.includes(k))))return;   // sentence must mention the topic
     LEX.pos.forEach(k=>{if(s.includes(k)){pos++;if(hits.length<4)hits.push('+ "'+k+'"');}});
     LEX.neg.forEach(k=>{if(s.includes(k)){neg++;if(hits.length<4)hits.push('− "'+k+'"');}});
+    // P2: hard-data beats/misses count double
+    if(/(gdp|cpi|pmi|exports|retail sales|trade balance|industrial)/.test(s)){
+      if(/(beat|above|tops|exceed|stronger|better.than)/.test(s)){pos+=2;if(hits.length<5)hits.push('++ data beat');}
+      if(/(miss|below|weaker|disappoint|worse.than)/.test(s)){neg+=2;if(hits.length<5)hits.push('−− data miss');}
+    }
   });
   if(pos+neg===0)return {score:0,hits:['topic mentioned, no clear sentiment'],n:state.news.items.length};
   const raw=(pos-neg)/Math.max(2,(pos+neg)/2);
   return {score:Math.max(-2,Math.min(2,Math.round(raw))),hits,pos,neg,n:state.news.items.length};
 }
-function mondayOf(iso){return WDEngine.mondayOf(iso);}
-/* ---- server files ---- */
-const DATA_BASE='data/';
-async function fetchDecision(manual){
-  if(!location.protocol.startsWith('http'))return false;   // file:// — no server files; local engine only
-  let ok=false;
-  try{const r=await timeout(fetch(DATA_BASE+'latest.json',{cache:'no-store'}),8000);if(r.ok){const j=await r.json();if(j&&j.decision){state.decision=j;state.decisionAt=Date.now();ok=true;}}}catch(e){}
-  try{const r=await timeout(fetch(DATA_BASE+'scorecard.json',{cache:'no-store'}),8000);if(r.ok){const j=await r.json();if(j&&j.called){state.scorecard=j;}}}catch(e){}
-  if(!state.baseline){try{const r=await timeout(fetch(DATA_BASE+'baseline.json',{cache:'no-store'}),8000);if(r.ok)state.baseline=await r.json();}catch(e){}}
-  health('decision',ok,ok?'server decision '+state.decision.date:'no server decision (pipeline not run yet?)');
-  if(manual)snack(ok?'Decision file loaded · '+state.decision.date:'No server decision file — showing the local engine');
-  return ok;
-}
-/* ---- local fallback: the same engine, run in the browser on the app's own data (no external inputs) ---- */
-function completedOhlc(){const t=todayISO();return state.ohlc.filter(r=>r.d<t&&!r.self);}
-function localDecision(){
-  const key=lastOhlcDate()+'|'+Math.round(state.live.px||0);
-  if(state.localDecision&&state.localDecision.key===key)return state.localDecision;
-  const ohlc=completedOhlc();
-  const dec=WDEngine.decide({date:todayISO(),ohlc,preOpen:state.live.px||null,ext:null,calendar:state.calendar||[]});
-  const sel=WDEngine.selectVehicle(state.warrants,dec.dir,todayISO(),null);
-  const plan=WDEngine.plan(dec,sel.vehicle);
-  state.localDecision={key,date:todayISO(),decision:dec,vehicle:sel.vehicle,vehicleSelection:{reasons:sel.reasons,candidates:sel.candidates,rejected:(sel.rejected||[]).slice(0,12)},plan,stance:dec.dir?(plan&&plan.units?'ENTER':'STAND ASIDE'):'STAND ASIDE',local:true,generatedAt:new Date().toISOString(),
-    sources:{note:'LOCAL fallback: computed in this browser from cached OHLC + live quote; VIX/US/China inputs unavailable → neutral'}};
-  return state.localDecision;
-}
-/* the record the whole app reads: server decision when it exists and is recent, else the local engine */
-function currentRec(){
-  const D=state.decision;
-  if(D&&D.decision){
-    const age=(new Date(todayISO())-new Date(D.date))/864e5;
-    if(age<=4)return D;                                   // weekend/holiday gap tolerated; older → stale
+function autoTech(ctx){
+  const ohlc=(ctx&&ctx.ohlc)||state.ohlc;
+  const c=ohlc.map(r=>r.c);const n=c.length;if(n<10)return null;
+  const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
+  const last=c[n-1],sma5=avg(c.slice(-5)),sma10=avg(c.slice(-10));
+  const mom5=(last-c[n-6])/c[n-6]*100;
+  let s=0;const ev=[];
+  if(last>sma5){s+=0.7;ev.push('close '+fmt(last)+' > 5d avg '+fmt(sma5));}else{s-=0.7;ev.push('close '+fmt(last)+' < 5d avg '+fmt(sma5));}
+  if(sma5>sma10){s+=0.6;ev.push('5d avg > 10d avg (uptrend)');}else{s-=0.6;ev.push('5d avg < 10d avg (downtrend)');}
+  if(mom5>1.5){s+=0.7;ev.push('5-day momentum +'+mom5.toFixed(1)+'%');}
+  else if(mom5>0.3){s+=0.3;ev.push('5-day momentum +'+mom5.toFixed(1)+'%');}
+  else if(mom5<-1.5){s-=0.7;ev.push('5-day momentum '+mom5.toFixed(1)+'%');}
+  else if(mom5<-0.3){s-=0.3;ev.push('5-day momentum '+mom5.toFixed(1)+'%');}
+  else ev.push('momentum flat ('+mom5.toFixed(1)+'%)');
+  // R5: range-position sub-score (deterministic, replaces the old extension brake).
+  // −1 when the last completed close sits in the top decile of the trailing 3-week range AND gains are decelerating;
+  // +1 in the bottom decile with improving breadth. Penalises chasing tops / rewards value zones systematically.
+  let comp=ohlc;if(comp.length&&comp[comp.length-1].d===todayISO())comp=comp.slice(0,-1);
+  if(comp.length>=15){
+    const win=comp.slice(-15);
+    const hi=Math.max(...win.map(r=>r.h)),lo=Math.min(...win.map(r=>r.l));
+    const cc=comp.map(r=>r.c);const close=cc[cc.length-1];
+    const pos=(hi>lo)?(close-lo)/(hi-lo):0.5;                 // 0 = bottom of 3-wk range, 1 = top
+    const mNow=(cc[cc.length-1]-cc[cc.length-6])/cc[cc.length-6]*100;
+    const mPrev=(cc[cc.length-6]-cc[cc.length-11])/cc[cc.length-11]*100;
+    const decel=mNow<mPrev;                                    // this week's gains slower than prior week's
+    let advNow=0,advPrev=0;
+    for(let i=cc.length-5;i<cc.length;i++)if(cc[i]>cc[i-1])advNow++;
+    for(let i=cc.length-10;i<cc.length-5;i++)if(cc[i]>cc[i-1])advPrev++;
+    const breadthUp=advNow>advPrev;
+    if(pos>=0.9&&decel){s-=1;ev.push('⚠ range-position: close in TOP decile of 3-wk range ('+Math.round(pos*100)+'%) + gains decelerating → −1 (chasing the top)');}
+    else if(pos<=0.1&&breadthUp){s+=1;ev.push('range-position: close in BOTTOM decile of 3-wk range ('+Math.round(pos*100)+'%) + improving breadth → +1 (value zone)');}
+    else ev.push('range-position: '+Math.round(pos*100)+'% of 3-wk range'+(decel?', gains decelerating':', gains steady')+' → no adjustment');
   }
-  return localDecision();
+  let score=Math.max(-2,Math.min(2,Math.round(s)));
+  return {score,ev};
 }
-function verdict(){
-  const R=currentRec(),d=R.decision;
-  const c=d.conviction||0;
-  const sizeTxt=(d.size&&d.size.multiplier===0)?'No new entries':(d.size&&d.size.multiplier>=1)?'Full size':'Half size';
-  const base={c,dir:d.dir,d:R.date,src:R.local?'local':'server',stance:R.stance,rec:R};
-  if(!d.dir)return Object.assign(base,{label:'NO-TRADE',cls:'amber',size:'Stand aside — no validated signal today'});
-  return Object.assign(base,{label:d.dir==='C'?'LONG · CALLS':'SHORT · PUTS',cls:d.dir==='C'?'green':'red',size:sizeTxt+' · '+(d.size&&d.size.reasons?d.size.reasons.join('; '):'')});
+async function autoUS(ctx){
+  const j=await apiJSON('https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=5d&interval=1d');
+  const q=j.chart.result[0];const cl=q.indicators.quote[0].close.filter(x=>x!=null);
+  const chg=(cl[cl.length-1]-cl[cl.length-2])/cl[cl.length-2]*100;
+  let vix=null;
+  try{const v=await apiJSON('https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?range=1d&interval=1d');vix=v.chart.result[0].meta.regularMarketPrice;}catch(e){}
+  let s=chg>1?1.5:chg>0.2?1:chg<-1?-1.5:chg<-0.2?-1:0;
+  const ev=['S&P 500 last session '+(chg>=0?'+':'')+chg.toFixed(2)+'%'];
+  if(vix!=null){ev.push('VIX '+vix.toFixed(1));if(vix<15)s+=0.5;else if(vix>22)s-=1;}
+  return {score:Math.max(-2,Math.min(2,Math.round(s))),ev};
 }
-function topPick(){
-  const R=currentRec();const v=R.vehicle;if(!v)return null;
-  const live=state.warrants.find(x=>x.sym===v.sym);
-  const w=Object.assign({},v,live||{},{sym:v.sym});          // live quote wins for bid/ask; server terms otherwise
-  const dec=R.decision;const atrPct=dec.atr&&dec.preOpen?dec.atr*1.5/dec.preOpen*100:null;
-  return {w,score:null,notes:R.vehicleSelection?R.vehicleSelection.reasons:[],flags:live?[]:['no live quote — server terms shown'],reqIdx:atrPct};
+function autoFlows(ctx){ // P1: breadth from COMPLETED sessions only — today's partial candle no longer pollutes the count
+  let rows=(ctx&&ctx.ohlc)||state.ohlc;
+  if(rows.length&&rows[rows.length-1].d===todayISO())rows=rows.slice(0,-1);
+  const c=rows.map(r=>r.c);const n=c.length;if(n<6)return null;
+  let adv=0;for(let i=n-5;i<n;i++)if(c[i]>c[i-1])adv++;
+  const ev=[adv+' of last 5 completed sessions closed higher (breadth proxy — southbound data not machine-readable)'];
+  return {score:Math.max(-2,Math.min(2,adv-2)),ev};
 }
-/* ---- rendering: Desk recommendation card ---- */
-function renderRec(){
-  const R=currentRec(),d=R.decision,v=verdict(),el=$('rec-card');
-  const tag=R.local?'<span class="tag grey" data-tip="No server decision file found — this was computed in your browser without VIX/US/China inputs">local engine</span>':'<span class="tag purple" data-tip="Generated by the GitHub Actions run at '+new Date(R.generatedAt).toLocaleString('en-MY')+'">server · '+R.date+(R.backfill?' · backfill':'')+'</span>';
-  if(R.openPosition){
-    const o=R.openPosition,p=o.plan||{};
-    el.innerHTML='<div class="row" style="justify-content:space-between;margin-bottom:8px"><span class="tag blue" style="font-size:15px;padding:6px 14px">HOLD</span>'+tag+'</div>'+
-      '<div class="why">'+o.note+'<br><b>'+(o.vehicle||'')+'</b> · entry '+fmt(p.entry)+' · stop <b>'+fmt(p.stop)+'</b> · target <b>'+fmt(p.target)+'</b> · '+(p.timeStop||'')+'</div>';
-    $('rec-wl').innerHTML='';return;
-  }
-  if(!d.dir){el.innerHTML='<div class="row" style="justify-content:space-between;margin-bottom:8px"><span class="tag amber" style="font-size:15px;padding:6px 14px">STAND ASIDE</span>'+tag+'</div><div class="empty"><div class="big">⏸</div>No validated signal today (conviction '+(d.conviction>0?'+':'')+d.conviction+', needs ±'+WDEngine.BANDS.noTrade+').<br>Standing aside is the plan — it is recorded, not scored as a win.</div>';$('rec-wl').innerHTML='';return;}
-  const tp=topPick(),p=R.plan;
-  if(!tp){el.innerHTML='<div class="row" style="justify-content:space-between;margin-bottom:8px"><span class="tag '+v.cls+'" style="font-size:15px;padding:6px 14px">'+v.label+'</span>'+tag+'</div><div class="empty">Direction called but no '+(d.dir==='C'?'call':'put')+' passes the vehicle rules.<br>'+((R.vehicleSelection&&R.vehicleSelection.reasons)||[]).join(' · ')+'</div>';$('rec-wl').innerHTML='';return;}
-  const w=tp.w;
-  el.innerHTML=
-   '<div class="row" style="justify-content:space-between;margin-bottom:10px"><div>'+
-   '<span style="font-size:20px;font-weight:800">'+w.sym+'</span> <span class="tag grey mono">'+(w.code||'')+'</span> '+
-   '<span class="tag '+(w.type==='C'?'green':'red')+'">'+(w.type==='C'?'CALL':'PUT')+'</span> <span class="tag '+(R.stance==='ENTER'?'green':'amber')+'">'+R.stance+'</span></div>'+tag+'</div>'+
-   '<div class="statgrid">'+
-   '<div class="stat"><div class="k">Strike / expiry</div><div class="v" style="font-size:13px">'+fmt(w.strike)+' · '+(w.expiry||'–')+'</div></div>'+
-   '<div class="stat"><div class="k">Bid / Offer</div><div class="v mono" style="font-size:14px">'+(w.bid??'–')+' / '+(w.ask??'–')+'</div></div>'+
-   '<div class="stat"><div class="k">Gearing · sens</div><div class="v">'+(w.eg||'–')+'x · '+(w.sens||'–')+'</div></div>'+
-   (p?'<div class="stat"><div class="k">Enter ≈</div><div class="v mono">'+fmt(p.entry)+'</div></div>'+
-   '<div class="stat"><div class="k">Stop</div><div class="v mono" style="color:var(--red)">'+fmt(p.stop)+'</div></div>'+
-   '<div class="stat"><div class="k">Target</div><div class="v mono" style="color:var(--green)">'+fmt(p.target)+'</div></div>':'')+
-   '</div>'+
-   (p?'<div class="why" style="margin-top:12px"><b>Plan:</b> '+(p.units?fmt(p.units)+' units at ~'+p.buyAt.toFixed(3)+' ('+fmtRM(p.capitalRM)+', '+(d.size.multiplier>=1?'full':'half')+' size)':'<b style="color:var(--amber)">no new entry — '+(p.note||'')+'</b>')+
-     ' · stop '+fmt(p.stop)+' ('+p.stopBasis+', ≈'+fmtRM(p.lossRM)+') · target '+fmt(p.target)+' (1.5×ATR, ≈'+fmtRM(p.winRM)+')'+(p.rr?' · R:R 1 : '+p.rr:'')+' · '+p.timeStop+'.'+
-     '<br><b>Why this warrant:</b> '+tp.notes.join('; ')+(tp.flags.length?' <span style="color:var(--amber)">'+tp.flags.join('; ')+'</span>':'')+'</div>':'')+
-   '<div class="row" style="margin-top:10px"><button class="btn sm" data-sim="'+w.sym+'">Open in simulator →</button></div>';
-  $('rec-wl').innerHTML=wlButton(w.sym);
-  bindWl($('rec-card').parentElement);
-  el.querySelectorAll('[data-sim]').forEach(b=>b.onclick=()=>{openInSim(b.dataset.sim);});
+function autoEvent(ctx){
+  let s=0;const ev=[];
+  const cal=(ctx&&ctx.calendar)||state.calendar;
+  const roll=(cal||[]).find(e=>e.type==='rollover'&&(new Date(e.date)-Date.now())/864e5>=-0.5&&(new Date(e.date)-Date.now())/864e5<=4);
+  if(roll){s-=1;ev.push('HSI futures rollover '+roll.date);}
+  const dom=new Date().getDate();
+  if(dom>=9&&dom<=17){s-=1;ev.push('mid-month China data window (CPI/credit/GDP/activity typically 9th–17th)');}
+  const ns=scanNews(['event']);
+  if(ns&&ns.pos+ns.neg>0){s-=1;ev.push('news flags upcoming binary events: '+ns.hits.slice(0,3).join(', '));}
+  const hol=(cal||[]).find(e=>e.type==='holiday'&&(new Date(e.date)-Date.now())/864e5>=0&&(new Date(e.date)-Date.now())/864e5<=5);
+  if(hol){ev.push('HK holiday '+hol.date+' this week (thin liquidity around it)');}
+  if(!ev.length)ev.push('no major scheduled risk detected this week');
+  return {score:Math.max(-2,Math.min(0,s)),ev};
 }
-/* ---- rendering: Strategy page ---- */
-function factorRows(dec){
-  return Object.keys(dec.factors||{}).map(k=>{const f=dec.factors[k];const s=f.score||0;
-    return '<tr><td>'+f.label+(f.weight?'':' <span class="tag grey" style="font-size:9px">context</span>')+'</td><td class="mono" style="text-align:center;color:'+(s>0?'var(--green)':s<0?'var(--red)':'var(--ink3)')+'"><b>'+(s>0?'+':'')+s+'</b></td><td class="mono" style="text-align:center">'+f.weight+'%</td><td style="white-space:normal;font-size:12px;color:var(--ink2)">'+(f.evidence||[]).join(' · ')+(f.missing?' <span class="tag amber" style="font-size:9px">input missing</span>':'')+'</td></tr>';}).join('');
+// R1: derive the entry/target/stop/size plan logged with each forecast
+function planFor(tp,wl){
+  if(!tp||!wl)return null;
+  const isC=tp.w.type==='C';
+  const eLvl=isC?(wl.lower?wl.lower[1]:null):(wl.upper?wl.upper[1]:null);
+  const tLvl=isC?(wl.upper?wl.upper[1]:null):(wl.lower?wl.lower[1]:null);
+  const stop=eLvl!=null?Math.round(isC?eLvl-150:eLvl+150):null;
+  const px=tp.w.ask||tp.w.bid;
+  const units=px?Math.floor((state.settings.capital-state.settings.brokerage)/(px*LOT))*LOT:null;
+  return {entry:eLvl!=null?Math.round(eLvl):null,target:tLvl!=null?Math.round(tLvl):null,stop,units,px:px||null};
 }
-function renderDecision(){
-  const el=$('decision');if(!el)return;
-  const R=currentRec(),d=R.decision,v=verdict();
-  const F=d.features||{};
-  let h='<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px"><div><span class="tag '+v.cls+'" style="font-size:17px;padding:8px 18px">'+v.label+'</span> <span class="tag '+(R.stance==='ENTER'?'green':R.stance==='HOLD'?'blue':'amber')+'" style="font-size:13px">'+R.stance+'</span></div>'+
-    '<span class="tag '+(R.local?'grey':'purple')+'">'+(R.local?'local engine':'server · '+R.date+(R.backfill?' · backfill':''))+' · v'+(d.version||'')+'</span></div>';
-  h+='<div class="statgrid" style="margin-bottom:10px"><div class="stat"><div class="k">Conviction</div><div class="v">'+(d.conviction>0?'+':'')+d.conviction+'</div></div>'+
-     '<div class="stat"><div class="k">Trade band</div><div class="v" style="font-size:12px">±'+WDEngine.BANDS.noTrade+' one signal · ±'+WDEngine.BANDS.full+' full size</div></div>'+
-     '<div class="stat"><div class="k">Size</div><div class="v" style="font-size:13px">'+(d.size?('×'+d.size.multiplier):'–')+'</div></div>'+
-     '<div class="stat"><div class="k">Pre-open / last close</div><div class="v mono" style="font-size:13px">'+fmt(d.preOpen)+' / '+fmt(d.lastClose)+'</div></div>'+
-     '<div class="stat"><div class="k">ATR(10)</div><div class="v mono">'+fmt(d.atr)+'</div></div></div>';
-  h+='<div style="overflow-x:auto"><table><tr><th>Signal</th><th>Score</th><th>Weight</th><th>Evidence</th></tr>'+factorRows(d)+'</table></div>';
-  h+='<div class="note">'+(d.size&&d.size.reasons?d.size.reasons.join(' · '):'')+'</div>';
-  const S=R.sources||{};
-  h+='<div class="note" style="font-size:11px">Inputs: '+(S.note||[S.hsi&&('HSI '+S.hsi),S.preOpen&&('pre-open '+S.preOpen),S.warrants&&('warrants '+S.warrants)].filter(Boolean).join(' · '))+(R.inputErrors&&R.inputErrors.length?' · <span style="color:var(--amber)">'+R.inputErrors.length+' input error(s): '+R.inputErrors.join('; ')+'</span>':'')+'</div>';
-  el.innerHTML=h;
-  // plan card
-  const pe=$('plan');if(!pe)return;
-  const p=R.plan,V=R.vehicle;
-  if(R.openPosition){pe.innerHTML='<div class="why"><b>HOLD</b> — '+R.openPosition.note+'</div>';return;}
-  if(!d.dir){pe.innerHTML='<div class="empty">No plan — standing aside.</div>';return;}
-  if(!V){pe.innerHTML='<div class="empty">No vehicle passes the rules today.<br>'+((R.vehicleSelection&&R.vehicleSelection.reasons)||[]).join(' · ')+'</div>';return;}
-  let ph='<b>'+V.sym+'</b> <span class="tag grey mono">'+(V.code||'')+'</span> '+(V.type==='C'?'CALL':'PUT')+' '+fmt(V.strike)+' · exp '+V.expiry+' ('+V.weeks+' wks) · bid/offer '+V.bid+'/'+V.ask+' · '+V.eg+'x · sens '+V.sens+' · θ '+V.theta+'%/day<br>';
-  if(p){
-    ph+='<table style="margin-top:8px"><tr><th>Step</th><th>Level</th><th>Warrant est.</th><th>RM</th></tr>'+
-      '<tr><td>Enter (pre-open futures)</td><td class="mono">'+fmt(p.entry)+'</td><td class="mono">'+p.buyAt.toFixed(3)+' offer</td><td class="mono">'+(p.units?fmt(p.units)+' units · '+fmtRM(p.capitalRM):'<b style="color:var(--amber)">0 units</b>')+'</td></tr>'+
-      '<tr><td>Stop ('+p.stopBasis+', '+p.stopPts+' pts)</td><td class="mono" style="color:var(--red)">'+fmt(p.stop)+'</td><td class="mono">'+p.exitAtStop.toFixed(3)+'</td><td class="mono" style="color:var(--red)">'+fmtRM(p.lossRM)+'</td></tr>'+
-      '<tr><td>Target (1.5×ATR, '+p.targetPts+' pts)</td><td class="mono" style="color:var(--green)">'+fmt(p.target)+'</td><td class="mono">'+p.exitAtTarget.toFixed(3)+'</td><td class="mono" style="color:var(--green)">'+fmtRM(p.winRM)+'</td></tr>'+
-      '<tr><td>Time-stop</td><td colspan="3">'+p.timeStop+(p.rr?' · R:R 1 : '+p.rr:'')+'</td></tr></table>';
-    if(p.note)ph+='<div class="note" style="color:var(--amber)">'+p.note+'</div>';
-  }
-  const VS=R.vehicleSelection||{};
-  ph+='<div class="note">'+(VS.reasons||[]).join(' · ')+(VS.locked?' · 🔒 week lock':'')+(VS.candidates!=null?' · '+VS.candidates+' candidates passed':'')+'</div>';
-  if(VS.rejected&&VS.rejected.length)ph+='<details style="font-size:11px;color:var(--ink3)"><summary>'+VS.rejected.length+' rejected (why)</summary>'+VS.rejected.map(r=>r.sym+': '+r.why).join('<br>')+'</details>';
-  ph+='<div class="note">Verify the live matrix before ordering. The pre-open futures level and the estimates come from the issuer sensitivity — they are not quotes.</div>';
-  pe.innerHTML=ph;
+let genRunning=false;
+async function generateStrategy(manual,slotId){
+  if(genRunning)return;genRunning=true;
+  const btn=$('genStrategy');if(btn)btn.disabled=true;
+  if($('gen-status'))$('gen-status').textContent='Generating — refreshing feeds…';
+  try{
+    if(dataAge()==null||dataAge()>10)await refreshAll(false);
+    // Kernel-driven: score every factor from the market context. Add/edit a factor in ALGO.factors — this loop never changes.
+    const ctx=buildCtx();
+    const auto={},srcs={};
+    for(const f of ALGO.factors){
+      let res=null;
+      try{res=await f.score(ctx);}catch(e){res=null;}
+      if(res){auto[f.key]={score:res.score,ev:res.ev};srcs[f.key]=res.sources||[];}
+    }
+    // apply to unlocked factors — U6: never silently destroy hand-written notes
+    const applied=[],locked=[],handEdited=[];
+    FACTORS.forEach(f=>{
+      const note=state.fnotes[f.k]||'';
+      if(!state.flocks[f.k]&&auto[f.k]&&note&&!note.startsWith('[auto]'))handEdited.push(f.label);
+    });
+    let overwriteNotes=true;
+    if(handEdited.length){
+      if(manual)overwriteNotes=confirm('These factors have hand-written notes:\n• '+handEdited.join('\n• ')+'\n\nOK = replace notes with fresh auto-evidence.\nCancel = keep your notes (scores still update). Tip: 🔒 lock a factor to fully protect it.');
+      else overwriteNotes=false; // daily auto-run never destroys manual notes
+    }
+    FACTORS.forEach(f=>{
+      if(state.flocks[f.k]){locked.push(f.k);return;}
+      if(auto[f.k]){
+        state.factors[f.k]=auto[f.k].score;
+        const note=state.fnotes[f.k]||'';
+        if(overwriteNotes||!note||note.startsWith('[auto]'))state.fnotes[f.k]='[auto] '+auto[f.k].ev.join(' · ');
+        applied.push(f.k);
+      }
+    });
+    const v=verdict(),tp=topPick(),wl=watchLevels();
+    const rec={t:Date.now(),d:todayISO(),
+      factors:Object.assign({},state.factors),weights:Object.assign({},state.settings.weights),
+      evidence:{},sources:{},lockedFactors:locked,
+      conv:v.c,label:v.label,dir:v.dir,
+      px:state.live.px,pxTime:state.live.stime,
+      upper:wl&&wl.upper?wl.upper:null,lower:wl&&wl.lower?wl.lower:null,
+      predLo:wl&&wl.lower?Math.round(wl.lower[1]):null, predHi:wl&&wl.upper?Math.round(wl.upper[1]):null, // R1 predicted range
+      plan:planFor(tp,wl),   // R1 entry / target / stop / size
+      lesson:'', midweek:'', // R1 post-mortem lesson · R2 mid-week action note (filled later)
+      pick:tp?{sym:tp.w.sym,code:tp.w.code,type:tp.w.type,strike:tp.w.strike,expiry:tp.w.expiry,bid:tp.w.bid,ask:tp.w.ask,eg:tp.w.eg,score:tp.score,notes:tp.notes.slice(0,3),flags:tp.flags.slice(0,2)}:null,
+      auto:manual?'manual trigger':(slotId?'auto slot '+slotId:'daily auto')};
+    FACTORS.forEach(f=>{rec.evidence[f.k]=auto[f.k]?auto[f.k].ev:[state.fnotes[f.k]||'manual'];rec.sources[f.k]=srcs[f.k]||[];});
+    state.strategies.push(rec);
+    if(state.strategies.length>60)state.strategies=state.strategies.slice(-60);
+    if(slotId){ // slot snapshot for automatic intraday validation
+      state.slotRecords.push({d:rec.d,slot:slotId,t:rec.t,px:rec.px,dir:rec.dir,conv:rec.conv,
+        pick:rec.pick?rec.pick.sym:null,pickAsk:rec.pick?(rec.pick.ask||rec.pick.bid):null,
+        pickBid:rec.pick?rec.pick.bid:null,sens:rec.pick?state.warrants.find(x=>x.sym===rec.pick.sym)?.sens:null,
+        type:rec.pick?rec.pick.type:null,scored:false});
+      if(state.slotRecords.length>240)state.slotRecords=state.slotRecords.slice(-240);
+    }
+    save();renderAll();
+    if($('gen-status'))$('gen-status').textContent='Generated '+new Date(rec.t).toLocaleString('en-MY')+' · scored '+applied.length+' factors from data'+(locked.length?' · kept your locked: '+locked.join(', '):'')+' · saved to history.';
+    snack('Strategy: '+v.label+' ('+(v.c>0?'+':'')+v.c+')'+(tp?' → '+tp.w.sym:''));
+  }catch(e){if($('gen-status'))$('gen-status').textContent='Generation failed: '+(''+e).slice(0,80);}
+  if(btn)btn.disabled=false;
+  genRunning=false;
 }
-$('genStrategy').onclick=async()=>{ // manual: refresh data, re-read the server file, and show the local engine if there is none
-  $('genStrategy').disabled=true;
-  try{await refreshAll(false);}catch(e){}
-  state.localDecision=null;localDecision();
-  save();renderAll();$('genStrategy').disabled=false;
-  snack(state.decision&&currentRec()===state.decision?'Server decision '+state.decision.date+' shown':'Local engine run — no external inputs');
-};
-/* ---- decision history (from the scorecard) ---- */
+function whyHTML(rec){
+  const parts=FACTORS.map(f=>({f,s:rec.factors[f.k]||0,w:(rec.weights&&rec.weights[f.k]!=null)?rec.weights[f.k]:f.w}))
+    .sort((a,b)=>Math.abs(b.s*b.w)-Math.abs(a.s*a.w));
+  const drivers=parts.filter(p=>p.s!==0).slice(0,4);
+  let h='<b>'+rec.label+' · conviction '+(rec.conv>0?'+':'')+rec.conv+'/10</b> — generated '+new Date(rec.t).toLocaleString('en-MY')+' at HSI fut '+fmt(rec.px)+' ('+rec.auto+').<br>';
+  if(drivers.length){
+    h+='<b>Drivers:</b><br>'+drivers.map(p=>{
+      const ev=(rec.evidence[p.f.k]||[]).join('; ');
+      const src=(rec.sources[p.f.k]||[]).map(s=>'<a href="'+s[1]+'" target="_blank" rel="noopener">'+s[0]+'</a>').join(', ');
+      return '• '+p.f.label+' <b>'+(p.s>0?'+':'')+p.s+'</b> ('+p.w+'%): '+ev+(src?' <span style="color:var(--ink3)">['+src+']</span>':'');
+    }).join('<br>');
+  } else h+='All factors neutral — no edge detected.';
+  if(rec.upper&&rec.lower)h+='<br><b>Levels:</b> watch '+fmt(rec.lower[1])+' ('+rec.lower[0]+') below vs '+fmt(rec.upper[1])+' ('+rec.upper[0]+') above.';
+  if(rec.pick)h+='<br><b>Pick:</b> '+rec.pick.sym+' ('+(rec.pick.type==='C'?'CALL':'PUT')+' '+fmt(rec.pick.strike)+', exp '+rec.pick.expiry+', '+rec.pick.eg+'x, rank '+rec.pick.score+'/100) — '+rec.pick.notes.join('; ')+(rec.pick.flags&&rec.pick.flags.length?'. Caveats: '+rec.pick.flags.join('; '):'')+'. <a href="https://www.malaysiawarrants.com.my/tools/livematrix/'+(rec.pick.code||'')+'" target="_blank" rel="noopener">Live matrix ↗</a>';
+  else if(rec.dir)h+='<br><b>Pick:</b> none passed the filters at generation time.';
+  else h+='<br><b>Pick:</b> no-trade band — capital preservation is the trade.';
+  return h;
+}
 let histExpand=false;
-function renderHistory(){
+function renderStrategyHistory(){
   const el=$('strat-history');if(!el)return;
-  const H=(state.scorecard&&state.scorecard.history)||[];
-  if(!H.length){el.innerHTML='<div class="empty"><div class="big">📜</div>No scored decisions yet — the pipeline appends one per trading day.</div>';return;}
-  const shown=histExpand?H:H.slice(0,10);
-  let h='<div style="overflow-x:auto"><table><tr><th>Date</th><th>Call</th><th>Conv</th><th>Vehicle</th><th>Entry / stop / target</th><th>Outcome</th><th>HSI o→c</th><th>P&L</th></tr>';
-  shown.forEach(r=>{
-    const name=r.dir==='C'?'LONG':r.dir==='P'?'SHORT':'NO-TRADE';
-    h+='<tr><td>'+r.date+(r.backfill?' <span class="tag grey" style="font-size:9px" data-tip="Replayed offline from stored history, not a live morning run">↻</span>':'')+'</td>'+
-      '<td><span class="tag '+(r.dir==='C'?'green':r.dir==='P'?'red':'amber')+'">'+name+'</span>'+(r.stance==='HOLD'?' <span class="tag blue" style="font-size:9px">HOLD</span>':'')+'</td>'+
-      '<td class="mono">'+(r.conviction>0?'+':'')+r.conviction+'</td><td>'+(r.vehicle||'–')+'</td>'+
-      '<td class="mono" style="font-size:11px">'+(r.entry?fmt(r.entry)+' / '+fmt(r.stop)+' / '+fmt(r.target):'–')+'</td>'+
-      '<td>'+(r.outcome||'–')+(r.daysHeld?' <span style="color:var(--ink3)">'+r.daysHeld+'d</span>':'')+'</td>'+
-      '<td class="mono '+(r.hsiOpenClosePct>=0?'up':'dn')+'">'+(r.hsiOpenClosePct>=0?'+':'')+r.hsiOpenClosePct+'%</td>'+
-      '<td class="mono '+(r.pnlRM>0?'up':r.pnlRM<0?'dn':'')+'">'+(r.pnlRM!=null?fmtRM(r.pnlRM)+(r.estimated?' <i style="color:var(--ink3)">est</i>':''):'–')+'</td></tr>';
+  const list=state.strategies.slice().reverse();
+  if(!list.length){el.innerHTML='<div class="empty"><div class="big">📜</div>No strategies yet — press ⚡ Generate strategy, or it runs itself each trading morning.</div>';return;}
+  const shown=histExpand?list:list.slice(0,5); // U5: keep the page short
+  el.innerHTML=shown.map((r,i)=>'<div class="why" style="margin-bottom:10px">'+whyHTML(r)+
+    '<div class="row" style="margin-top:8px;gap:8px;align-items:center"><input data-lesson="'+r.t+'" placeholder="post-mortem lesson…" value="'+(r.lesson||'').replace(/"/g,'&quot;')+'" style="flex:1;font-size:12px">'+
+    '<button class="btn sm danger" data-sdel="'+r.t+'">🗑</button></div></div>').join('')+
+    (list.length>5?'<div class="row" style="justify-content:center"><button class="btn ghost sm" id="hist-more">'+(histExpand?'Show latest 5 only':'Show all '+list.length+' strategies')+'</button></div>':'');
+  const hm=$('hist-more');if(hm)hm.onclick=()=>{histExpand=!histExpand;renderStrategyHistory();};
+  el.querySelectorAll('[data-lesson]').forEach(inp=>inp.onchange=()=>{
+    const r=state.strategies.find(x=>''+x.t===inp.dataset.lesson);if(r){r.lesson=inp.value;save();}
   });
-  h+='</table></div>'+(H.length>10?'<div class="row" style="justify-content:center"><button class="btn ghost sm" id="hist-more">'+(histExpand?'Show latest 10':'Show all '+H.length)+'</button></div>':'');
-  el.innerHTML=h;const hm=$('hist-more');if(hm)hm.onclick=()=>{histExpand=!histExpand;renderHistory();};
+  el.querySelectorAll('[data-sdel]').forEach(b=>b.onclick=()=>{
+    const i=state.strategies.findIndex(x=>''+x.t===b.dataset.sdel);
+    if(i<0)return;const rec=state.strategies[i];
+    state.strategies.splice(i,1);save();renderStrategyHistory();
+    snack('Strategy record deleted',()=>{state.strategies.splice(i,0,rec);save();renderStrategyHistory();});
+  });
 }
-function exportScorecardCSV(){
-  const H=(state.scorecard&&state.scorecard.history)||[];
-  if(!H.length){snack('No scored decisions yet');return;}
-  const cols=['date','backfill','stance','label','conviction','vehicle','entry','stop','target','units','outcome','exitDate','daysHeld','hsiOpenClosePct','dirCorrect','pnlRM','pnlPct','estimated'];
-  const rows=[cols].concat(H.map(r=>cols.map(c=>r[c]==null?'':(''+r[c]).replace(/,/g,';'))));
+// R1: Forecast + Actuals CSV — joins each logged forecast with the actual OHLC for its date
+function exportForecastLog(){
+  if(!state.strategies.length){snack('No forecasts logged yet');return;}
+  const H=['date','time','trigger','china','us','tech','sect','flow','event','conviction','direction',
+    'pred_low','pred_high','entry','target','stop','size_units','pick','pick_type','pick_strike','pick_entry_px',
+    'actual_close','actual_high','actual_low','range_held','dir_correct','pick_move_%','midweek_action','lesson'];
+  const rows=[H];
+  state.strategies.forEach(r=>{
+    const a=state.ohlc.find(x=>x.d===r.d)||null;              // actuals for that date, if the close has happened
+    const p=r.plan||{};
+    let rangeHeld='',dirOK='',pickMove='';
+    if(a){
+      if(r.predLo!=null&&r.predHi!=null)rangeHeld=(a.l>=r.predLo*0.999&&a.h<=r.predHi*1.001)?'Y':'N';
+      if(r.dir&&r.px)dirOK=((a.c-r.px>=0&&r.dir==='C')||(a.c-r.px<0&&r.dir==='P'))?'Y':'N';
+      if(r.pick&&r.pick.ask&&r.pick.sens){const dirn=r.pick.type==='C'?1:-1;
+        const est=Math.max((r.pick.bid||r.pick.ask)+dirn*(a.c-r.px)/r.pick.sens*TICK,0.005);
+        pickMove=((est-r.pick.ask)/r.pick.ask*100).toFixed(1);}
+    }
+    rows.push([r.d,new Date(r.t).toLocaleTimeString('en-MY'),r.auto,
+      r.factors.china,r.factors.us,r.factors.tech,r.factors.sect,r.factors.flow,r.factors.event,
+      r.conv,r.dir==='C'?'LONG':r.dir==='P'?'SHORT':'NO-TRADE',
+      r.predLo??'',r.predHi??'',p.entry??'',p.target??'',p.stop??'',p.units??'',
+      r.pick?r.pick.sym:'',r.pick?r.pick.type:'',r.pick?r.pick.strike:'',r.pick&&p.px?p.px:'',
+      a?a.c:'',a?a.h:'',a?a.l:'',rangeHeld,dirOK,pickMove,
+      (r.midweek||'').replace(/[,\n]/g,';'),(r.lesson||'').replace(/[,\n]/g,';')]);
+  });
   const blob=new Blob([rows.map(r=>r.join(',')).join('\n')],{type:'text/csv'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='warrantdesk-scorecard-'+todayISO()+'.csv';a.click();
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='warrantdesk-forecast-log-'+todayISO()+'.csv';a.click();
+  snack('Forecast log exported · '+(rows.length-1)+' forecasts');
 }
-$('flog-csv').onclick=exportScorecardCSV;
-/* ---- level alert (kept from R2: fires any day, once) ---- */
-function renderFlipNote(){const n=$('mw-flipnote');if(n)n.textContent=state.flip&&state.flip.level?('Armed — alerts when HSI is '+state.flip.dir+' '+fmt(state.flip.level)):'No level alert set';}
+$('flog-csv').onclick=exportForecastLog;
+$('genStrategy').onclick=()=>generateStrategy(true);
+/* ================= R2: MID-WEEK FLIP PROTOCOL ================= */
+function mondayOf(iso){const d=new Date(iso+'T12:00:00');const wd=(d.getDay()+6)%7;d.setDate(d.getDate()-wd);return d.toISOString().slice(0,10);}
+function weekBaseline(){const wk=mondayOf(todayISO());return state.strategies.find(s=>mondayOf(s.d)===wk)||null;}
+async function midweekCheck(manual){
+  const base=weekBaseline(),out=$('mw-out');if(!out)return;
+  if(!base){out.innerHTML='No baseline strategy logged this week yet — press ⚡ Generate strategy first.';if(manual)snack('No baseline this week');return;}
+  let us=null;try{us=await autoUS();}catch(e){}
+  const sn=scanNews(['sect']);const se=sn?sn.score:(base.factors.sect||0);
+  const curUS=us?us.score:(base.factors.us||0);
+  const dUS=curUS-(base.factors.us||0),dSE=se-(base.factors.sect||0);
+  const moved=Math.max(Math.abs(dUS),Math.abs(dSE));
+  const openPos=state.portfolio.open,pick=topPick();
+  let exitTxt='';
+  if(openPos.length){const w=state.warrants.find(x=>x.sym===openPos[0].sym);exitTxt=openPos[0].sym+' live bid '+(w&&w.bid!=null?w.bid.toFixed(3):'–');}
+  else if(pick)exitTxt=pick.w.sym+' live bid '+(pick.w.bid!=null?pick.w.bid.toFixed(3):'–');
+  let action,cls;
+  if(moved<2){action='HOLD';cls='green';}
+  else{
+    const tf=Object.assign({},base.factors,{us:curUS,sect:se});
+    let s=0,tw=0;FACTORS.forEach(f=>{s+=(tf[f.k]||0)*wt(f.k);tw+=wt(f.k);});
+    const newConv=tw?+(s/tw*5).toFixed(1):0;
+    action=(Math.sign(newConv)!==Math.sign(base.conv||0)&&Math.abs(newConv)>=3)?'FLIP':'CUT HALF';
+    cls=action==='FLIP'?'red':'amber';
+  }
+  out.innerHTML='<b><span class="tag '+cls+'">'+action+'</span></b> — fast-factor swing vs '+base.d+' baseline: '+
+    'US/Fed '+(base.factors.us>=0?'+':'')+base.factors.us+'→'+(curUS>=0?'+':'')+curUS+' ('+(dUS>=0?'+':'')+dUS+'), '+
+    'Sector '+(base.factors.sect>=0?'+':'')+base.factors.sect+'→'+(se>=0?'+':'')+se+' ('+(dSE>=0?'+':'')+dSE+').'+
+    (moved>=2?'<br>A fast factor moved ≥2 points → <b>'+action+'</b>'+(exitTxt?' · exit ref: '+exitTxt:'')+'. Logged to this week\'s forecast row.':'<br>Neither fast factor moved ≥2 — thesis intact, stay the course.')+
+    (us?'<br><span style="color:var(--ink3)">'+us.ev.join('; ')+(sn&&sn.hits?'; sector news: '+sn.hits.slice(0,3).join(', '):'')+'</span>':'');
+  base.midweek=action+' @'+new Date().toLocaleString('en-MY')+' (ΔUS '+dUS+', ΔSect '+dSE+')';
+  save();renderStrategyHistory();
+  if(manual)snack('Mid-week check: '+action);
+}
+$('mw-run').onclick=()=>midweekCheck(true);
+function renderFlipNote(){const n=$('mw-flipnote');if(n)n.textContent=state.flip&&state.flip.level?('Armed — alerts when HSI is '+state.flip.dir+' '+fmt(state.flip.level)):'No flip alert set';}
 function renderMidweek(){
   if(!$('mw-flip'))return;
   if(document.activeElement!==$('mw-flip'))$('mw-flip').value=(state.flip&&state.flip.level)?state.flip.level:'';
@@ -2256,9 +2491,90 @@ $('mw-flipsave').onclick=()=>{
   const lv=+$('mw-flip').value||null;
   state.flip={level:lv,dir:$('mw-flipdir').value,setAt:lv?Date.now():null,firedD:null};
   save();renderFlipNote();
-  snack(lv?('Level alert armed: HSI '+$('mw-flipdir').value+' '+fmt(lv)):'Level alert cleared');
+  snack(lv?('Flip alert armed: HSI '+$('mw-flipdir').value+' '+fmt(lv)):'Flip alert cleared');
 };
-/* ---- position alerts (target hit · stop proximity · trailing · level alert) ---- */
+/* ================= SLOT SCHEDULER (pre-market + 08:50 / 10:00 / 14:00 / 16:00) ================= */
+const SLOTS=[{id:'08:50',m:530},{id:'10:00',m:600},{id:'14:00',m:840},{id:'16:00',m:960}];
+async function slotTick(){
+  if(state.settings.mode==='off')return;
+  const iso=todayISO();if(!tradingDay(iso))return;
+  const m=new Date().getHours()*60+new Date().getMinutes();
+  // 1 · pre-market snapshot (08:30–09:10): overnight futures level before HK opens
+  if(m>=510&&m<=550&&(!state.premarket||state.premarket.d!==iso)){
+    try{await fetchIndex();}catch(e){}
+    state.premarket={d:iso,px:state.live.px,chg:state.live.chg,pchg:state.live.pchg,t:Date.now()};
+    save();renderBriefing();snack('Pre-market snapshot: futures '+fmt(state.live.px)+' ('+(state.live.chg>=0?'+':'')+fmt(state.live.chg)+')');
+  }
+  // 2 · preset strategy slots (each fires once, within 45 min of its time)
+  for(const s of SLOTS){
+    if(m>=s.m&&m<=s.m+45&&!state.slotRecords.some(r=>r.d===iso&&r.slot===s.id)&&!genRunning&&!refreshing){
+      await generateStrategy(false,s.id);
+      break; // one per tick
+    }
+  }
+  scoreSlots(false);
+  // R2 · Wednesday post-close mid-week check when holding a position (once/day)
+  if(new Date().getDay()===3&&m>=965&&state.portfolio.open.length){
+    const base=weekBaseline();
+    if(base&&!(base.midweek||'').includes('@')){try{await midweekCheck(false);}catch(e){}}
+  }
+}
+function scoreSlots(force){
+  const iso=todayISO();const m=new Date().getHours()*60+new Date().getMinutes();
+  let n=0;
+  state.slotRecords.forEach(r=>{
+    if(r.scored)return;
+    let row;
+    if(r.slot==='16:00'){ // close-time call is judged against the NEXT session's close
+      const i=state.ohlc.findIndex(x=>x.d===r.d);
+      row=(i>=0&&state.ohlc[i+1]&&state.ohlc[i+1].d!==todayISO())?state.ohlc[i+1]:(i>=0&&state.ohlc[i+1]&&(m>=965||force)?state.ohlc[i+1]:null);
+    }else{
+      row=state.ohlc.find(x=>x.d===r.d);
+      if(row&&r.d===iso&&m<965&&!force)row=null; // same-day slots wait for the close
+    }
+    if(!row)return;
+    const chg=(row.c-r.px)/r.px*100;
+    let sDir;
+    if(!r.dir)sDir=Math.abs(chg)<0.25?4:Math.abs(chg)<0.5?2:0;
+    else{const mm=chg*(r.dir==='C'?1:-1);
+      sDir=mm>=0.4?4:mm>=0.1?3:mm>-0.1?2:mm>-0.4?1:0;}
+    let sW=null,wChg=null;
+    if(r.pick&&r.pickAsk&&r.sens){
+      const dirn=r.type==='C'?1:-1;
+      const est=Math.max((r.pickBid||r.pickAsk)+dirn*(row.c-r.px)/r.sens*TICK,0.005);
+      wChg=(est-r.pickAsk)/r.pickAsk*100;
+      sW=wChg>=3?3:wChg>0?2:wChg>-2?1:0;
+    }
+    r.close=row.c;r.chgPct=+chg.toFixed(2);r.wChg=wChg==null?null:+wChg.toFixed(1);
+    r.sDir=sDir;r.sW=sW;
+    r.score=+(((sDir+(sW==null?0:sW))/(4+(sW==null?0:3)))*10).toFixed(1);
+    r.scored=true;n++;
+  });
+  if(n)save();
+  return n;
+}
+function renderSlots(){
+  const el=$('slot-table');if(!el)return;
+  const recs=state.slotRecords.slice().reverse().slice(0,24);
+  let h='<tr><th>Date</th><th>Slot</th><th>Call</th><th>Conv</th><th>HSI slot→close</th><th>Pick</th><th>Warrant Δ (est)</th><th>Score</th></tr>';
+  if(!recs.length)h+='<tr><td colspan="8"><div class="empty">No slot records yet — they generate automatically at 08:50, 10:00, 14:00, 16:00 on trading days while the app is open on any device.</div></td></tr>';
+  recs.forEach(r=>{
+    h+='<tr><td>'+r.d+'</td><td class="mono">'+r.slot+(r.backfill?' <span class="tag grey" style="font-size:9px" data-tip="Captured by the Worker cron while the app was closed; verdict carried from the last generated strategy">↻</span>':'')+'</td>'+
+    '<td><span class="tag '+(r.dir==='C'?'green':r.dir==='P'?'red':'amber')+'">'+(r.dir==='C'?'LONG':r.dir==='P'?'SHORT':'NO-TRADE')+'</span></td>'+
+    '<td class="mono">'+(r.conv>0?'+':'')+r.conv+'</td>'+
+    (r.scored?'<td class="mono '+(r.chgPct>=0?'up':'dn')+'" data-tip="From '+fmt(r.px)+' at the slot to '+fmt(r.close)+' at the close'+(r.slot==='16:00'?' of the NEXT session':'')+'">'+(r.chgPct>=0?'+':'')+r.chgPct+'%</td>':'<td>pending close</td>')+
+    '<td>'+(r.pick||'–')+'</td>'+
+    (r.scored&&r.wChg!=null?'<td class="mono '+(r.wChg>=0?'up':'dn')+'">'+(r.wChg>=0?'+':'')+r.wChg+'%</td>':'<td>–</td>')+
+    (r.scored?'<td data-tip="Direction '+r.sDir+'/4'+(r.sW!=null?' + warrant '+r.sW+'/3':'')+', normalised to /10"><b style="color:'+(r.score>=6?'var(--green)':r.score>=4?'var(--amber)':'var(--red)')+'">'+r.score+'/10</b></td>':'<td>–</td>');
+    h+='</tr>';
+  });
+  el.innerHTML=h;
+  // per-slot averages
+  const sums={};state.slotRecords.filter(r=>r.scored).forEach(r=>{(sums[r.slot]=sums[r.slot]||[]).push(r.score);});
+  const avg=$('slot-avg');
+  if(avg)avg.innerHTML=SLOTS.map(s=>{const a=sums[s.id];return '<b>'+s.id+'</b>: '+(a&&a.length?(a.reduce((x,y)=>x+y,0)/a.length).toFixed(1)+'/10 ('+a.length+'d)':'–');}).join(' &nbsp;·&nbsp; ');
+}
+/* ================= P3: POSITION ALERTS (target hit · stop proximity · trailing) ================= */
 function checkAlerts(){
   const px=state.live.px;if(!px)return;
   const d=todayISO();let changed=false;
@@ -2266,47 +2582,252 @@ function checkAlerts(){
     t.alerted=t.alerted||{};
     const w=state.warrants.find(x=>x.sym===t.sym);
     const isC=(w&&w.type)==='C'||t.type==='C';
-    if(t.tgt&&t.alerted.tgt!==d&&((isC&&px>=t.tgt)||(!isC&&px<=t.tgt))){t.alerted.tgt=d;changed=true;snack('🎯 '+t.sym+': HSI hit your target '+fmt(t.tgt)+' — take profit or trail the stop');}
+    // target level hit
+    if(t.tgt&&t.alerted.tgt!==d&&((isC&&px>=t.tgt)||(!isC&&px<=t.tgt))){
+      t.alerted.tgt=d;changed=true;
+      snack('🎯 '+t.sym+': HSI hit your target '+fmt(t.tgt)+' — take profit or trail the stop');
+    }
+    // stop proximity (within 60 pts) and stop breach
     if(t.stop){
       const dist=isC?px-t.stop:t.stop-px;
-      if(dist<=0&&t.alerted.stop!==d){t.alerted.stop=d;changed=true;snack('🛑 '+t.sym+': HSI through your stop level '+fmt(t.stop)+' — exit discipline time');}
-      else if(dist>0&&dist<=60&&t.alerted.stopNear!==d){t.alerted.stopNear=d;changed=true;snack('⚠ '+t.sym+': HSI within '+Math.round(dist)+' pts of your stop '+fmt(t.stop));}
+      if(dist<=0&&t.alerted.stop!==d){t.alerted.stop=d;changed=true;
+        snack('🛑 '+t.sym+': HSI through your stop level '+fmt(t.stop)+' — exit discipline time');}
+      else if(dist>0&&dist<=60&&t.alerted.stopNear!==d){t.alerted.stopNear=d;changed=true;
+        snack('⚠ '+t.sym+': HSI within '+Math.round(dist)+' pts of your stop '+fmt(t.stop));}
     }
-    if(w&&w.bid&&t.entry&&t.alerted.trail!==d){const up=(w.bid-t.entry)/t.entry*100;if(up>=15){t.alerted.trail=d;changed=true;snack('📈 '+t.sym+' is +'+up.toFixed(0)+'% — consider trailing your stop to breakeven ('+t.entry.toFixed(3)+') or higher');}}
+    // trailing suggestion at +15% mark-to-market
+    if(w&&w.bid&&t.entry&&t.alerted.trail!==d){
+      const up=(w.bid-t.entry)/t.entry*100;
+      if(up>=15){t.alerted.trail=d;changed=true;
+        snack('📈 '+t.sym+' is +'+up.toFixed(0)+'% — consider trailing your stop to breakeven ('+t.entry.toFixed(3)+') or higher');}
+    }
   });
+  // R2 · standing flip-trigger level — fires any day, once
   if(state.flip&&state.flip.level){
     const lv=state.flip.level,hit=state.flip.dir==='above'?px>=lv:px<=lv;
-    if(hit&&state.flip.firedD!==d){state.flip.firedD=d;changed=true;snack('🔔 LEVEL ALERT — HSI '+fmt(px)+' is '+state.flip.dir+' your '+fmt(lv)+' level.');}
+    if(hit&&state.flip.firedD!==d){state.flip.firedD=d;changed=true;
+      snack('🔁 FLIP TRIGGER — HSI '+fmt(px)+' is '+state.flip.dir+' your '+fmt(lv)+' level. Run the mid-week check and act on the position.');}
   }
   if(changed)save();
 }
-/* ---- Scorecard page ---- */
-function renderScorecard(){
-  if(!$('sc-n'))return;
-  const S=state.scorecard;
-  const pct=(a,b)=>b?Math.round(a/b*100)+'%':'–';
-  if(!S||!S.called){$('sc-n').textContent='–';$('sc-hit').textContent='–';$('sc-pnl').textContent='–';$('sc-aside').textContent='–';
-    $('sc-nd').textContent='no scored decisions yet';$('sc-hitd').textContent='';$('sc-pnld').textContent='';$('sc-asided').textContent='';
-    $('sc-bands').innerHTML='';$('sc-table').innerHTML='<tr><td><div class="empty"><div class="big">✓</div>The pipeline scores each decision after the close. Nothing scored yet.</div></td></tr>';$('sc-note').textContent='';return;}
-  const C=S.called;
-  $('sc-n').textContent=C.n;$('sc-nd').textContent=(S.live||0)+' live · '+(S.backfilled||0)+' backfilled · '+S.tradingDays+' trading days';
-  $('sc-hit').textContent=pct(C.hits,C.n);$('sc-hitd').textContent=C.hits+' of '+C.n+' called days, decision price → exit';
-  $('sc-pnl').textContent=fmtRM(C.pnlRM);$('sc-pnl').className='val mono '+(C.pnlRM>0?'up':C.pnlRM<0?'dn':'');
-  $('sc-pnld').textContent='avg '+fmtRM(C.avgRM)+'/trade · payoff '+(S.payoff??'–')+' · max DD '+fmtRM(S.maxDrawdownRM);
-  $('sc-aside').textContent=S.stoodAside.n;$('sc-asided').textContent=S.stoodAside.bigMovesMissed+' days moved ≥1% while aside (info only, not scored)';
-  let b='<tr><th>Band</th><th>Days</th><th>Hit</th><th>Winners</th><th>P&L</th></tr>';
-  Object.entries(S.byBand||{}).forEach(([k,a])=>{b+='<tr><td>'+k+'</td><td class="mono">'+a.n+'</td><td class="mono">'+pct(a.hits,a.n)+'</td><td class="mono">'+a.winners+'</td><td class="mono '+(a.pnlRM>0?'up':a.pnlRM<0?'dn':'')+'">'+fmtRM(a.pnlRM)+'</td></tr>';});
-  Object.entries(S.byDir||{}).forEach(([k,a])=>{b+='<tr><td>'+k+'</td><td class="mono">'+a.n+'</td><td class="mono">'+pct(a.hits,a.n)+'</td><td class="mono">'+a.winners+'</td><td class="mono '+(a.pnlRM>0?'up':a.pnlRM<0?'dn':'')+'">'+fmtRM(a.pnlRM)+'</td></tr>';});
-  $('sc-bands').innerHTML=b;
-  const H=(S.history||[]).filter(r=>r.dir&&r.stance!=='HOLD');
-  let h='<tr><th>Date</th><th>Call</th><th>Conv</th><th>Vehicle</th><th>Outcome</th><th>Held</th><th>HSI o→c</th><th>Warrant</th><th>P&L</th></tr>';
-  if(!H.length)h+='<tr><td colspan="9"><div class="empty">No called days scored yet.</div></td></tr>';
-  H.slice(0,40).forEach(r=>{h+='<tr><td>'+r.date+(r.backfill?' <span class="tag grey" style="font-size:9px">↻</span>':'')+'</td><td><span class="tag '+(r.dir==='C'?'green':'red')+'">'+(r.dir==='C'?'LONG':'SHORT')+'</span></td><td class="mono">'+(r.conviction>0?'+':'')+r.conviction+'</td><td>'+(r.vehicle||'–')+'</td><td>'+(r.outcome||'–')+'</td><td class="mono">'+(r.daysHeld||'–')+'</td><td class="mono '+(r.hsiOpenClosePct>=0?'up':'dn')+'">'+(r.hsiOpenClosePct>=0?'+':'')+r.hsiOpenClosePct+'%</td><td class="mono '+(r.pnlPct>0?'up':r.pnlPct<0?'dn':'')+'">'+(r.pnlPct!=null?(r.pnlPct>0?'+':'')+r.pnlPct+'%':'–')+'</td><td class="mono '+(r.pnlRM>0?'up':r.pnlRM<0?'dn':'')+'">'+(r.pnlRM!=null?fmtRM(r.pnlRM):'–')+(r.estimated?' <i style="color:var(--ink3)">est</i>':'')+'</td></tr>';});
-  $('sc-table').innerHTML=h;
-  const B=state.baseline;
-  $('sc-note').innerHTML=(B&&B.v3?'<b>2-year backtest ('+B.period[0]+' → '+B.period[1]+', synthetic 11× warrant):</b> v3 '+B.v3.called.hits+'/'+B.v3.called.n+' direction hits, paper '+fmtRM(B.v3.called.pnlRM)+', payoff '+(B.v3.payoff??'–')+', max DD '+fmtRM(B.v3.maxDrawdownRM)+' · v2.4.0 baseline '+B.baseline.called.hits+'/'+B.baseline.called.n+', paper '+fmtRM(B.baseline.called.pnlRM)+'. In-sample; the live scorecard above is the number that matters.':'')+
-    (S.updatedAt?'<br>Scorecard updated '+new Date(S.updatedAt).toLocaleString('en-MY'):'');
+/* ================= P5: WORKER-CRON TICK BACKFILL ================= */
+const SLOTLABEL={'08:30':'pre','08:50':'08:50','10:00':'10:00','14:00':'14:00','16:05':'16:00'};
+async function fetchTicks(){
+  if(!state.settings.syncUrl)return null;
+  const r=await timeout(fetch(state.settings.syncUrl.replace(/\/$/,'')+'/ticks?days=10'),12000);
+  if(!r.ok)throw new Error('ticks '+r.status);
+  return await r.json();
 }
+function backfillSlots(days){
+  if(!days)return 0;let n=0;
+  Object.keys(days).forEach(d=>{
+    (days[d]||[]).forEach(tk=>{
+      const slot=SLOTLABEL[tk.label];
+      if(!slot||!tk.px)return;
+      if(slot==='pre'){ // pre-market backfill for today
+        if(d===todayISO()&&(!state.premarket||state.premarket.d!==d)){
+          state.premarket={d,px:tk.px,chg:tk.chg||0,t:tk.t,backfill:true};n++;
+        }
+        return;
+      }
+      if(state.slotRecords.some(r=>r.d===d&&r.slot===slot))return;
+      // carry the standing strategy at that moment (labelled backfill — never fabricated fresh)
+      const carried=state.strategies.slice().reverse().find(s=>s.t<=tk.t);
+      if(!carried)return;
+      state.slotRecords.push({d,slot,t:tk.t,px:tk.px,dir:carried.dir,conv:carried.conv,
+        pick:carried.pick?carried.pick.sym:null,pickAsk:carried.pick?(carried.pick.ask||carried.pick.bid):null,
+        pickBid:carried.pick?carried.pick.bid:null,
+        sens:carried.pick?(state.warrants.find(x=>x.sym===carried.pick.sym)||{}).sens:null,
+        type:carried.pick?carried.pick.type:null,scored:false,backfill:true});
+      n++;
+    });
+  });
+  if(n){state.slotRecords.sort((a,b)=>a.t-b.t);if(state.slotRecords.length>240)state.slotRecords=state.slotRecords.slice(-240);scoreSlots(false);save();}
+  return n;
+}
+/* ================= R4: WORKER-CRON MATRIX SNAPSHOTS ================= */
+async function fetchMatrix(){
+  if(!state.settings.syncUrl)return null;
+  const r=await timeout(fetch(state.settings.syncUrl.replace(/\/$/,'')+'/matrix?days=10'),12000);
+  if(!r.ok)throw new Error('matrix '+r.status);
+  return await r.json();
+}
+function applyMatrix(days){
+  if(!days)return 0;
+  let latest=null;
+  Object.keys(days).forEach(d=>{(days[d]||[]).forEach(s=>{if(s.rows&&s.rows.length&&(!latest||s.t>latest.t))latest=Object.assign({},s,{d});});});
+  if(!latest)return 0;
+  state.matrixSnap={d:latest.d,half:latest.half,t:latest.t,count:latest.count,source:latest.source};
+  // seed warrant term-sheet fields ONLY when the live universe is older than this snapshot (app was closed)
+  if((state.wuAt||0)<latest.t){
+    const pN=s=>{const n=parseFloat((''+s).replace(/[,%]/g,''));return isNaN(n)?null:n;};
+    const bySym={};state.warrants.forEach(w=>bySym[w.sym]=w);
+    latest.rows.forEach(row=>{
+      const sym=row.sym;if(!sym)return;
+      const w=bySym[sym]||{sym,code:row.code,ric:''};
+      w.type=row.type==='C'?'C':'P';w.strike=pN(row.strike);w.expiry=parseMQDate(row.expiry);
+      w.eg=pN(row.eg);w.sens=pN(row.sens);w.bid=pN(row.bid);
+      w.ask=pN(row.offer)||(pN(row.bid)!=null?+(pN(row.bid)+TICK).toFixed(3):null);
+      w.iv=pN(row.iv);w.theta=pN(row.theta);w.stale=false;
+      w.updated=new Date(latest.t).toLocaleString('en-MY')+' (cron '+latest.half+')';
+      if(!bySym[sym]){state.warrants.push(w);bySym[sym]=w;}
+    });
+    state.wuAt=latest.t;state.wuTime='cron snapshot '+latest.half+' · '+new Date(latest.t).toLocaleString('en-MY');
+    health('matrix',true,latest.count+' warrants ('+latest.half+')');
+  }
+  return 1;
+}
+/* ================= VALIDATION (self-scoring) ================= */
+function tradingDay(iso){const d=new Date(iso+'T12:00:00');const wd=d.getDay();return wd!==0&&wd!==6&&!isHoliday(iso);}
+function captureSnapshot(){
+  const iso=todayISO();
+  if(!tradingDay(iso))return;
+  const V=state.validation;
+  if(V.days.some(r=>r.d===iso))return;               // already snapped
+  const now=new Date();const mins=now.getHours()*60+now.getMinutes();
+  if(mins>=955)return;                                // after ~15:55 — too late for a fair "morning" call
+  if(dataAge()==null||dataAge()>30)return;            // don't snapshot stale data
+  const v=verdict(),tp=topPick();
+  V.days.push({d:iso,conv:v.c,dir:v.dir,label:v.label,
+    pick:tp?tp.w.sym:null,pickCode:tp?tp.w.code:null,pickType:tp?tp.w.type:null,
+    pickBid:tp?tp.w.bid:null,pickAsk:tp?(tp.w.ask||tp.w.bid):null,
+    sens:tp?tp.w.sens:null,theta:tp?tp.w.theta:null,
+    hsiRef:state.live.px,prevClose:state.ohlc.length>1?state.ohlc[state.ohlc.length-(state.ohlc[state.ohlc.length-1].d===iso?2:1)].c:null,
+    upper:watchLevels()&&watchLevels().upper?watchLevels().upper[1]:null,
+    lower:watchLevels()&&watchLevels().lower?watchLevels().lower[1]:null,
+    snapAt:Date.now(),scored:false});
+  if(V.days.length>120)V.days=V.days.slice(-120);
+  save();
+}
+function scoreRecord(rec,force){
+  if(rec.scored)return false;
+  const iso=todayISO();
+  const row=state.ohlc.find(r=>r.d===rec.d);
+  if(!row)return false;
+  const now=new Date();const mins=now.getHours()*60+now.getMinutes();
+  const closed=rec.d<iso||mins>=965||force;           // past day, after ~16:05, or forced
+  if(!closed)return false;
+  const base=rec.prevClose||rec.hsiRef;
+  const chgPct=(row.c-base)/base*100;
+  // 1 · direction 0–4
+  let sDir;
+  if(!rec.dir)sDir=Math.abs(chgPct)<0.5?4:Math.abs(chgPct)<0.9?2:0;      // NO-TRADE: right if range-bound
+  else{const want=rec.dir==='C'?1:-1;const m=chgPct*want;
+    sDir=m>=0.6?4:m>=0.2?3:m>-0.15?2:m>-0.6?1:0;}
+  // 2 · warrant 0–3
+  let sW=null,wChgPct=null,est=false,paperPL=null;
+  if(rec.pick&&rec.pickAsk&&rec.sens){
+    const dirn=rec.pickType==='C'?1:-1;
+    let endBid;
+    const liveW=state.warrants.find(x=>x.sym===rec.pick);
+    if(rec.d===iso&&liveW&&liveW.bid!=null&&dataAge()!=null&&dataAge()<60){endBid=liveW.bid;}
+    else{endBid=Math.max((rec.pickBid||rec.pickAsk)+dirn*(row.c-rec.hsiRef)/rec.sens*TICK-Math.abs(rec.theta||1)/100*(rec.pickBid||rec.pickAsk),0.005);est=true;}
+    wChgPct=(endBid-rec.pickAsk)/rec.pickAsk*100;
+    sW=wChgPct>=5?3:wChgPct>0?2:wChgPct>-3?1:0;
+    const units=Math.floor(4990/(rec.pickAsk*LOT))*LOT;
+    paperPL=Math.round(units*(tickDn(endBid)-rec.pickAsk)-20);
+  }
+  // 3 · levels 0–3
+  let sL=null,lvlErr=null;
+  if(rec.upper||rec.lower){
+    const errs=[];
+    if(rec.upper)errs.push(Math.abs(row.h-rec.upper)/rec.upper*100);
+    if(rec.lower)errs.push(Math.abs(row.l-rec.lower)/rec.lower*100);
+    lvlErr=Math.min(...errs);
+    sL=lvlErr<=0.4?3:lvlErr<=0.8?2:lvlErr<=1.5?1:0;
+  }
+  const parts=[sDir,(sW==null?0:sW),(sL==null?0:sL)];
+  const denom=4+(sW==null?0:3)+(sL==null?0:3);
+  rec.total=+(parts.reduce((a,b)=>a+b,0)/denom*10).toFixed(1);
+  rec.sDir=sDir;rec.sW=sW;rec.sL=sL;rec.close=row.c;rec.chgPct=+chgPct.toFixed(2);
+  rec.wChgPct=wChgPct==null?null:+wChgPct.toFixed(1);rec.est=est;rec.lvlErr=lvlErr==null?null:+lvlErr.toFixed(2);
+  rec.paperPL=paperPL;rec.scored=true;
+  return true;
+}
+function validateTick(force){
+  captureSnapshot();
+  let n=0;state.validation.days.forEach(r=>{if(scoreRecord(r,force))n++;});
+  if(n){save();}
+  return n;
+}
+function vStats(){
+  const done=state.validation.days.filter(r=>r.scored);
+  const wAvg=list=>{if(!list.length)return null;
+    let num=0,den=0;list.forEach(r=>{const w=1+Math.abs(r.conv||0)/10;num+=r.total*w;den+=w;});
+    return num/den*10;};
+  const week=done.slice(-5);
+  const today=done.find(r=>r.d===todayISO());
+  const paper=done.reduce((a,r)=>a+(r.paperPL||0),0);
+  return {done,all:wAvg(done),week:wAvg(week),today,paper};
+}
+function renderValidation(){
+  if(!$('v-all'))return;
+  renderSlots();
+  const s=vStats();
+  $('v-all').textContent=s.all==null?'–':Math.round(s.all)+'%';
+  $('v-alld').textContent=s.done.length?s.done.length+' scored day'+(s.done.length>1?'s':'')+' · conviction-weighted':'no scored days yet — scores build automatically at each 16:00 close';
+  $('v-week').textContent=s.week==null?'–':Math.round(s.week)+'%';
+  $('v-weekd').textContent='last '+Math.min(5,s.done.length)+' trading days';
+  $('v-today').textContent=s.today?s.today.total+'/10':'–';
+  $('v-todayd').textContent=s.today?(s.today.total>=6?'on track ✓':'off track ✗'):'scores after 16:00 HK close';
+  $('v-paper').textContent=fmtRM(s.paper);
+  $('v-paper').className='val mono '+(s.paper>0?'up':s.paper<0?'dn':'');
+  sparkbars($('v-spark'),s.done.slice(-14).map(r=>r.total),cvar('--accent','#6d28d9'),
+    s.done.slice(-14).map(r=>r.d+': '+r.total+'/10 ('+(r.dir==='C'?'LONG':r.dir==='P'?'SHORT':'NO-TRADE')+', HSI '+(r.chgPct>=0?'+':'')+r.chgPct+'%)'));
+  // chart
+  const cv=$('v-chart'),ctx=cv.getContext('2d');
+  const W=cv.width=cv.clientWidth*2,H=cv.height=400;ctx.clearRect(0,0,W,H);
+  const rows=s.done.slice(-30);
+  if(rows.length){
+    const pad=[16,60,50,50];
+    const X=i=>pad[3]+(W-pad[1]-pad[3])*(rows.length===1?0.5:i/(rows.length-1));
+    const Y=v=>pad[0]+(H-pad[0]-pad[2])*(1-v/10);
+    ctx.strokeStyle=cvar('--line','#eeeef4');ctx.fillStyle=cvar('--ink3','#9a9aa8');ctx.font='19px Arial';
+    [0,2,4,6,8,10].forEach(g=>{ctx.beginPath();ctx.moveTo(pad[3],Y(g));ctx.lineTo(W-pad[1],Y(g));ctx.stroke();ctx.fillText(g,W-pad[1]+8,Y(g)+6);});
+    ctx.strokeStyle=cvar('--amber','#d97706');ctx.setLineDash([6,5]);ctx.beginPath();ctx.moveTo(pad[3],Y(6));ctx.lineTo(W-pad[1],Y(6));ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=cvar('--amber','#d97706');ctx.fillText('on-track line (6)',pad[3]+4,Y(6)-8);
+    const bw=Math.max(8,(W-pad[1]-pad[3])/rows.length*0.5);
+    rows.forEach((r,i)=>{
+      ctx.fillStyle=r.total>=6?cvar('--green','#16a34a'):r.total>=4?cvar('--amber','#d97706'):cvar('--red','#dc2626');
+      ctx.fillRect(X(i)-bw/2,Y(r.total),bw,Y(0)-Y(r.total));
+      if(rows.length<=14){ctx.fillStyle=cvar('--ink3','#9a9aa8');ctx.fillText(r.d.slice(5),X(i)-24,H-14);}
+    });
+  } else {ctx.fillStyle=cvar('--ink3','#9a9aa8');ctx.font='22px Arial';ctx.fillText('No scored days yet — the first bar appears after today\'s close.',60,H/2);}
+  // table
+  let h='<tr><th>Date</th><th>Call</th><th>Conv</th><th>HSI actual</th><th>Pick</th><th>Warrant Δ</th><th>Level err</th><th>Dir</th><th>Wnt</th><th>Lvl</th><th>Score</th><th>Paper P&L</th><th></th></tr>';
+  const all=state.validation.days.slice().reverse();
+  if(!all.length)h+='<tr><td colspan="13"><div class="empty"><div class="big">✓</div>No records yet. A snapshot of today\'s recommendation is taken automatically each trading morning, and scored after the close.</div></td></tr>';
+  all.forEach(r=>{
+    const callName=r.dir==='C'?'LONG':r.dir==='P'?'SHORT':'NO-TRADE';
+    const tDir=r.scored?('Direction '+r.sDir+'/4: called '+callName+' at conviction '+(r.conv>0?'+':'')+r.conv+'; HSI closed '+(r.chgPct>=0?'+':'')+r.chgPct+'% vs prior close.'+(r.dir?(((r.chgPct>=0&&r.dir==='C')||(r.chgPct<0&&r.dir==='P'))?' Right way':' Wrong way')+' — 4=clear move as called, 2=flat, 0=clearly wrong.':' NO-TRADE scores high when the day stays range-bound (<0.5%).')):'Scores after the 16:00 HK close.';
+    const tW=r.scored&&r.wChgPct!=null?('Warrant '+r.sW+'/3: '+r.pick+' morning offer → closing bid moved '+(r.wChgPct>=0?'+':'')+r.wChgPct+'%'+(r.est?' (sensitivity-model estimate — no live closing bid captured)':' (live bid)')+'. ≥+5%=3, positive=2, > −3%=1, worse=0.'):'No warrant was recommended (no-trade day or no pick passed filters).';
+    const tL=r.lvlErr!=null?('Levels '+ (r.scored?r.sL+'/3':'')+': predicted watch levels '+(r.upper?fmt(r.upper):'–')+' / '+(r.lower?fmt(r.lower):'–')+'; actual high/low missed the nearest one by '+r.lvlErr+'%. ≤0.4%=3, ≤0.8%=2, ≤1.5%=1.'):'No levels were predicted that morning.';
+    const tTot=r.scored?('Total '+r.total+'/10 = weighted sum of the three parts, normalised. ≥6 = on-track (green), 4–6 amber, <4 red. Paper P&L: RM5,000 into '+(r.pick||'the pick')+' at the morning offer, out at the closing bid, incl. spread + RM20 brokerage.'):'Pending close.';
+    h+='<tr><td>'+r.d+'</td><td data-tip="Snapshot taken '+new Date(r.snapAt).toLocaleTimeString('en-MY')+' that morning">'+'<span class="tag '+(r.dir==='C'?'green':r.dir==='P'?'red':'amber')+'">'+callName+'</span></td>'+
+    '<td class="mono" data-tip="Conviction score at snapshot time — weighs this day in the overall accuracy %">'+(r.conv>0?'+':'')+r.conv+'</td>'+
+    (r.scored?'<td class="mono '+(r.chgPct>=0?'up':'dn')+'" data-tip="'+tDir+'">'+(r.chgPct>=0?'+':'')+r.chgPct+'%</td>':'<td data-tip="'+tDir+'">pending</td>')+
+    '<td data-tip="'+tW+'">'+(r.pick||'–')+'</td>'+
+    (r.scored&&r.wChgPct!=null?'<td class="mono '+(r.wChgPct>=0?'up':'dn')+'" data-tip="'+tW+'">'+(r.wChgPct>=0?'+':'')+r.wChgPct+'%'+(r.est?' <i style="color:var(--ink3)">est</i>':'')+'</td>':'<td data-tip="'+tW+'">–</td>')+
+    '<td class="mono" data-tip="'+tL+'">'+(r.lvlErr!=null?r.lvlErr+'%':'–')+'</td>'+
+    '<td data-tip="'+tDir+'">'+(r.scored?r.sDir+'/4':'–')+'</td><td data-tip="'+tW+'">'+(r.scored&&r.sW!=null?r.sW+'/3':'–')+'</td><td data-tip="'+tL+'">'+(r.scored&&r.sL!=null?r.sL+'/3':'–')+'</td>'+
+    (r.scored?'<td data-tip="'+tTot+'"><b style="color:'+(r.total>=6?'var(--green)':r.total>=4?'var(--amber)':'var(--red)')+'">'+r.total+'/10</b></td>':'<td data-tip="'+tTot+'">–</td>')+
+    '<td class="mono" data-tip="'+tTot+'">'+(r.paperPL!=null?fmtRM(r.paperPL):'–')+'</td>'+
+    '<td><button class="btn sm danger" data-vdel="'+r.d+'">🗑</button></td></tr>';
+  });
+  $('v-table').innerHTML=h;
+  $('v-table').querySelectorAll('[data-vdel]').forEach(b=>b.onclick=()=>{
+    const i=state.validation.days.findIndex(x=>x.d===b.dataset.vdel);
+    if(i<0)return;const rec=state.validation.days[i];
+    state.validation.days.splice(i,1);save();renderValidation();
+    snack('Deleted record '+rec.d,()=>{state.validation.days.splice(i,0,rec);save();renderValidation();});
+  });
+  $('val-note').textContent='Snapshots are only taken when the app is open on a trading morning with fresh data — days you didn\'t run the tool are skipped, never back-filled. Warrant Δ marked "est" uses the sensitivity model when a live closing bid wasn\'t captured.';
+}
+$('v-score-now').onclick=()=>{
+  const n=validateTick(true)+scoreSlots(true);
+  renderValidation();
+  snack(n?('Scored '+n+' record'+(n>1?'s':'')):'Nothing to score — need a snapshot (taken automatically on trading mornings/slots) and a close for that day.');
+};
 /* ================= ASK THE DESK (agent) ================= */
 const SRC={
   matrix:c=>['Macquarie Live Matrix','https://www.malaysiawarrants.com.my/tools/livematrix/'+(c||'')],
@@ -2365,7 +2886,7 @@ function agentAnswer(q){
   /* --- breakeven / target --- */
   if(/break.?even|what.*(price|level).*(target|profit)|make rm/i.test(Q)&&w){
     const entry=priceM?+priceM[1]:(w.ask||w.bid);
-    const tgtM=q.match(/rm\s?(\d{3,6})/i);const tgt=tgtM?+tgtM[1]:((currentRec().plan&&currentRec().plan.winRM>0)?currentRec().plan.winRM:500);
+    const tgtM=q.match(/rm\s?(\d{3,6})/i);const tgt=tgtM?+tgtM[1]:state.settings.target;
     const units=Math.floor((state.settings.capital-state.settings.brokerage)/(entry*LOT))*LOT;
     const needSell=entry+(tgt+2*state.settings.brokerage)/units;
     const dW=needSell-entry;const dU=dW/TICK*(w.sens||50)*(w.type==='C'?1:-1);
@@ -2408,7 +2929,7 @@ function agentAnswer(q){
   /* --- verdict / strategy --- */
   if(/verdict|strategy|long or short|call or put|bias|direction|buy this week/i.test(Q)){
     const tp=topPick();
-    return {html:'<b>Today\'s decision: '+v.label+'</b> (conviction '+(v.c>0?'+':'')+v.c+'/10 — '+v.size.toLowerCase()+').<br>Factor scores: '+Object.values(currentRec().decision.factors||{}).map(f=>f.label.split(' ')[0]+' '+((f.score||0)>0?'+':'')+(f.score||0)).join(' · ')+'.<br>'+(tp?'Vehicle: <b>'+tp.w.sym+'</b> — '+tp.notes.slice(0,2).join('; ')+'.':'No warrant passes filters — fetch the live universe.')+'<br><i>Made by the pipeline at 08:45 MYT — see the Strategy tab for evidence and the plan.</i>',src:[SRC.matrix(tp?tp.w.code:''),SRC.mqnews()]};
+    return {html:'<b>Current weekly verdict: '+v.label+'</b> (conviction '+(v.c>0?'+':'')+v.c+'/10 — '+v.size.toLowerCase()+').<br>Factor scores: '+FACTORS.map(f=>f.label.split(' ')[0]+' '+(state.factors[f.k]>0?'+':'')+state.factors[f.k]).join(' · ')+'.<br>'+(tp?'Top-ranked vehicle: <b>'+tp.w.sym+'</b> ('+tp.score+'/100) — '+tp.notes.slice(0,2).join('; ')+'.':'No warrant passes filters — fetch the live universe.')+'<br><i>This is your own saved factor scoring — re-score in the Strategy tab as news lands.</i>',src:[SRC.matrix(tp?tp.w.code:''),SRC.mqnews()]};
   }
   /* --- portfolio --- */
   if(/portfolio|position|p.?&?.?l|pnl|how am i doing/i.test(Q)){
@@ -2428,7 +2949,7 @@ async function askClaude(q){
   const key=state.settings.aiKey;
   const ctx={now:new Date().toString(),hsi_futures:state.live,data_age_min:dataAge(),verdict:verdict(),levels:watchLevels()?{upper:watchLevels().upper,lower:watchLevels().lower}:null,
     warrants:state.warrants.map(w=>({sym:w.sym,type:w.type,strike:w.strike,expiry:w.expiry,bid:w.bid,ask:w.ask,eg:w.eg,sens:w.sens,iv:w.iv,theta:w.theta})),
-    portfolio:state.portfolio,settings:{capital:state.settings.capital},decision:currentRec().decision,plan:currentRec().plan,news:state.news?state.news.items:null};
+    portfolio:state.portfolio,settings:{capital:state.settings.capital,target:state.settings.target},news:state.news?state.news.items:null};
   const r=await timeout(fetch('https://api.anthropic.com/v1/messages',{method:'POST',
     headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
     body:JSON.stringify({model:state.settings.aiModel||'claude-haiku-4-5-20251001',max_tokens:900,
@@ -2495,9 +3016,10 @@ function mergeRemote(rm){
   // arrays merge (union, remote entries win on conflict because listed first)
   state.portfolio.open=byKey(rm.portfolio&&rm.portfolio.open,state.portfolio.open,'id');
   state.portfolio.closed=byKey(rm.portfolio&&rm.portfolio.closed,state.portfolio.closed,'id');
+  state.validation.days=byKey(rm.validation&&rm.validation.days,state.validation.days,'d').sort((a,b)=>a.d<b.d?-1:1);
   state.watchlist=[...new Set([...(rm.watchlist||[]),...(state.watchlist||[])])];
   // scalars/blobs: remote (newer) wins
-  ['plan','warrants','wuTime','wuAt','live','liveAt','ohlc','news','calendar','chat','intraday','activeWarrant','flip','outlook','extNarrative','updatedAt'].forEach(k=>{if(rm[k]!==undefined)state[k]=rm[k];});
+  ['factors','fnotes','plan','warrants','wuTime','wuAt','live','liveAt','ohlc','news','calendar','chat','intraday','activeWarrant','strategies','slotRecords','premarket','validation','flocks','flip','outlook','extNarrative','updatedAt'].forEach(k=>{if(rm[k]!==undefined)state[k]=rm[k];});
   state.settings=Object.assign({},defaultState().settings,rm.settings||{},{syncUrl:keepUrl,syncToken:keepTok,theme:keepTheme});
   return true;
 }
@@ -2546,10 +3068,12 @@ function updateFresh(){ // U8: freshness now lives inside the single status chip
 /* ------- global render + loop ------- */
 function focusInside(id){return $(id)&&$(id).contains(document.activeElement);}
 function renderAll(){
-  renderKPIs();drawChart();renderLevels();renderBriefing();renderRec();renderChat();renderScorecard();
-  renderDecision();renderUniverse();simOptions();renderPortfolio();renderWatchlist();renderHistory();renderMidweek();
+  validateTick(false);
+  renderKPIs();drawChart();renderLevels();renderBriefing();renderRec();renderChat();renderValidation();
+  if(!focusInside('factors'))renderFactors();else renderVerdict();
+  renderUniverse();simOptions();renderPortfolio();renderWatchlist();renderStrategyHistory();renderMidweek();
   if(!focusInside('page-settings'))renderSettings();
-  if(document.activeElement!==$('plan-notes'))$('plan-notes').value=state.plan||'';
+  if(document.activeElement!==$('plan'))$('plan').value=state.plan||'';
   $('ai-status').textContent=state.settings.aiKey?'rule engine + Claude':'rule engine';
   updateFresh();checkMarket();
 }
@@ -2564,7 +3088,7 @@ let schedT=null;
 function startLoop(){
   clearInterval(loopT);clearInterval(freshT);clearInterval(fastT);clearInterval(schedT);
   freshT=setInterval(updateFresh,30000);
-  schedT=setInterval(()=>{outlookTick();if(Date.now()-(state.decisionAt||0)>600000)fetchDecision(false).then(ok=>{if(ok)renderAll();}).catch(()=>{});},60000); // 07:00 outlook builder + decision-file poll every 10 min
+  schedT=setInterval(()=>{slotTick().catch(()=>{});outlookTick();},60000); // slot scheduler + 07:00 outlook builder
   // near-realtime quote: 10s polling during HK hours (lightweight — index quote only)
   if(state.settings.fastQuotes&&state.settings.mode!=='off')
     fastT=setInterval(async()=>{
@@ -2581,8 +3105,9 @@ function startLoop(){
         // news + HK calendar every 30 min
         if(!state.news||Date.now()-(state.news.at||0)>1800000){try{await fetchNews();}catch(e){} try{await fetchCalendar();}catch(e){}}
         // preset slots (pre-market, 08:50, 10:00, 14:00, 16:00) handled by the scheduler
-        checkAlerts();
-        save();renderKPIs();drawChart();renderLevels();renderPortfolio();renderWatchlist();renderScorecard();updateFresh();checkMarket();
+        slotTick();
+        validateTick(false);checkAlerts();
+        save();renderKPIs();drawChart();renderLevels();renderPortfolio();renderWatchlist();renderValidation();updateFresh();checkMarket();
         setConn(true,'live · auto');
       }catch(e){setConn(false,'offline · cached');updateFresh();checkMarket();}
     },state.settings.refreshSec*1000);
@@ -2596,7 +3121,7 @@ window.addEventListener('keydown',e=>{
 const freshInstall=!localStorage.getItem(LS_KEY);
 $('fresh').style.display='none'; // U8: folded into the single status chip
 applyTheme();
-$('plan-notes').value=state.plan||'';
+$('plan').value=state.plan||'';
 renderAll();
 syncTabbar('dash');
 setConn(null,'cached · '+ (state.live.stime||''));
@@ -2605,7 +3130,7 @@ startLoop();
 cloudStartup();
 /* PWA: register service worker only when hosted (file:// double-click still works) */
 if(location.protocol.startsWith('http')&&'serviceWorker' in navigator){
-  navigator.serviceWorker.register('sw.js').catch(()=>{});
+  Promise.resolve()/* v2 archive: no service worker */.catch(()=>{});
   let reloaded=false;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!reloaded){reloaded=true;snack('App updated to the latest version');}});
 }
