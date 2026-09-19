@@ -1,0 +1,124 @@
+{
+ "generatedAt": "2026-09-18T16:26:24.628Z",
+ "engine": "3.0.0",
+ "date": "2026-08-25",
+ "backfill": true,
+ "decision": {
+  "version": "3.0.0",
+  "date": "2026-08-25",
+  "preOpen": 25634.2,
+  "lastClose": 25517.3,
+  "atr": 347.9,
+  "features": {
+   "atr": 347.9,
+   "lastClose": 25517.3,
+   "z": -0.02,
+   "prev": -1.41,
+   "gap": 0.34,
+   "mom": 0.18
+  },
+  "factors": {
+   "stretch": {
+    "label": "Stretch vs 10d mean (fade)",
+    "score": 0,
+    "weight": 35,
+    "evidence": [
+     "close -0.02 ATR from 10d mean → normal range"
+    ],
+    "missing": false
+   },
+   "prevDay": {
+    "label": "Prior-day move (fade)",
+    "score": 1,
+    "weight": 25,
+    "evidence": [
+     "prior session -1.41 ATR → outsized, fade it"
+    ],
+    "missing": false
+   },
+   "gap": {
+    "label": "Opening gap (fade)",
+    "score": 0,
+    "weight": 20,
+    "evidence": [
+     "opening gap +0.34 ATR → negligible"
+    ],
+    "missing": false
+   },
+   "fear": {
+    "label": "Fear (VIX) — buy panic",
+    "score": 0,
+    "weight": 20,
+    "evidence": [
+     "VIX 15.85 → calm"
+    ],
+    "missing": false
+   },
+   "us": {
+    "label": "US context (no weight)",
+    "score": 0,
+    "weight": 0,
+    "evidence": [
+     "S&P 500 -0.28% (context only — no consistent edge in the 2y test)"
+    ],
+    "missing": false
+   },
+   "china": {
+    "label": "China context (no weight)",
+    "score": -1,
+    "weight": 0,
+    "evidence": [
+     "FXI -0.86%",
+     "USDCNY -0.02%",
+     "context only — no consistent edge in the 2y test"
+    ],
+    "missing": false
+   }
+  },
+  "conviction": 1.3,
+  "dir": null,
+  "size": {
+   "multiplier": 0.5,
+   "reasons": [
+    "single signal → half size"
+   ]
+  },
+  "holdDays": 3,
+  "label": "NO-TRADE"
+ },
+ "vehicle": null,
+ "vehicleSelection": {
+  "reasons": [
+   "no direction"
+  ],
+  "locked": false,
+  "candidates": 0,
+  "rejected": []
+ },
+ "plan": null,
+ "ext": {
+  "spxChgPct": -0.28,
+  "spxDate": "2026-08-24",
+  "vix": 15.85,
+  "fxiChgPct": -0.86,
+  "cnhChgPct": -0.02
+ },
+ "sources": {
+  "note": "OFFLINE: history + warrants-sample.json",
+  "preOpen": "OFFLINE: actual cash open used as pre-open level"
+ },
+ "inputErrors": [],
+ "openPosition": null,
+ "stance": "STAND ASIDE",
+ "result": {
+  "date": "2026-08-25",
+  "dir": null,
+  "conviction": 1.3,
+  "hsiOpen": 25634.2,
+  "hsiClose": 25511.1,
+  "hsiChgOpenClosePct": -0.48,
+  "hsiChgPrevClosePct": -0.02,
+  "kind": "stood-aside"
+ },
+ "scoredAt": "2026-09-18T16:26:33.083Z"
+}

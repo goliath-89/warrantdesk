@@ -1,0 +1,86 @@
+{
+ "period": [
+  "2024-10-15",
+  "2026-09-15"
+ ],
+ "baseline": {
+  "tradingDays": 473,
+  "called": {
+   "n": 156,
+   "hits": 73,
+   "filled": 57,
+   "winners": 21,
+   "pnlRM": -7448
+  },
+  "noTrade": 317,
+  "outcomes": {
+   "no fill": 99,
+   "TARGET": 13,
+   "STOP": 23,
+   "CLOSE": 21
+  }
+ },
+ "v3": {
+  "version": "3.0.0",
+  "tradingDays": 473,
+  "called": {
+   "n": 63,
+   "hits": 34,
+   "winners": 29,
+   "pnlRM": 4521,
+   "avgRM": 72
+  },
+  "open": 0,
+  "byBand": {
+   "single signal": {
+    "n": 58,
+    "hits": 31,
+    "winners": 26,
+    "pnlRM": 1301,
+    "avgRM": 22
+   },
+   "two signals": {
+    "n": 3,
+    "hits": 2,
+    "winners": 2,
+    "pnlRM": 1185,
+    "avgRM": 395
+   },
+   "three+": {
+    "n": 2,
+    "hits": 1,
+    "winners": 1,
+    "pnlRM": 2035,
+    "avgRM": 1018
+   }
+  },
+  "byDir": {
+   "LONG": {
+    "n": 34,
+    "hits": 19,
+    "winners": 18,
+    "pnlRM": 4600,
+    "avgRM": 135
+   },
+   "SHORT": {
+    "n": 29,
+    "hits": 15,
+    "winners": 11,
+    "pnlRM": -79,
+    "avgRM": -3
+   }
+  },
+  "payoff": 1.55,
+  "maxDrawdownRM": -3868,
+  "stoodAside": {
+   "n": 410,
+   "avgAbsMovePct": 0.73,
+   "bigMovesMissed": 96
+  },
+  "outcomes": {
+   "TARGET": 19,
+   "STOP": 26,
+   "TIME": 18
+  }
+ }
+}

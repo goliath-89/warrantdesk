@@ -1,0 +1,56 @@
+name: Warrant Desk — daily decision & scoring
+
+on:
+  schedule:
+    - cron: "45 0 * * 1-5"   # 08:45 MYT — decide (pre-open)
+    - cron: "35 8 * * 1-5"   # 16:35 MYT — score (post-close)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "decide | score | both"
+        type: choice
+        options: [both, decide, score]
+        default: both
+
+permissions:
+  contents: write
+
+concurrency:
+  group: warrantdesk-data
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Unit tests (regression gate)
+        run: node engine/test.js
+      - name: Pick mode from the clock unless dispatched
+        id: mode
+        run: |
+          M="${{ inputs.mode }}"
+          if [ -z "$M" ]; then
+            H=$(date -u +%H)
+            if [ "$H" -lt 4 ]; then M=decide; else M=score; fi
+          fi
+          echo "mode=$M" >> "$GITHUB_OUTPUT"
+      - name: Decide
+        if: steps.mode.outputs.mode == 'decide' || steps.mode.outputs.mode == 'both'
+        run: node engine/decide.js
+      - name: Score
+        if: steps.mode.outputs.mode == 'score' || steps.mode.outputs.mode == 'both'
+        run: node engine/score.js
+      - name: Commit data
+        run: |
+          git config user.name "warrantdesk-bot"
+          git config user.email "warrantdesk-bot@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then echo "no data changes"; exit 0; fi
+          git commit -m "data: ${{ steps.mode.outputs.mode }} $(TZ=Asia/Kuala_Lumpur date +'%Y-%m-%d %H:%M') MYT"
+          git pull --rebase origin ${{ github.ref_name }}
+          git push

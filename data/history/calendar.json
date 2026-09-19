@@ -1,0 +1,32 @@
+[
+ {
+  "date": "2026-09-09",
+  "type": "rollover",
+  "name": "HSI futures rollover"
+ },
+ {
+  "date": "2026-09-17",
+  "type": "rollover",
+  "name": "HSI futures rollover"
+ },
+ {
+  "date": "2026-09-28",
+  "type": "rollover",
+  "name": "HSI futures rollover"
+ },
+ {
+  "date": "2026-10-01",
+  "type": "holiday",
+  "name": "Hong Kong Market"
+ },
+ {
+  "date": "2026-10-19",
+  "type": "holiday",
+  "name": "Hong Kong Market"
+ },
+ {
+  "date": "2026-10-28",
+  "type": "rollover",
+  "name": "HSI futures rollover"
+ }
+]

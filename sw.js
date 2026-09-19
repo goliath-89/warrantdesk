@@ -1,7 +1,7 @@
-/* WarrantDesk service worker — cache-first shell, network-only data.
+/* WarrantDesk service worker — cache-first shell, NETWORK-FIRST for data/ (the daily decision & scorecard).
    Bump CACHE_VERSION on every release so users get updates immediately. */
-const CACHE_VERSION = 'warrantdesk-v6';
-const SHELL = ['./', './index.html', './manifest.json', './icon.svg'];
+const CACHE_VERSION = 'warrantdesk-v7';
+const SHELL = ['./', './index.html', './manifest.json', './icon.svg', './engine/engine.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -16,10 +16,15 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  // Never cache API/data calls — the app has its own cache + freshness logic
-  if (url.origin !== location.origin) return;
-  // Shell: cache-first, refresh in background (stale-while-revalidate)
-  e.respondWith(
+  if (url.origin !== location.origin) return;                      // API calls: app has its own cache/freshness logic
+  if (url.pathname.includes('/data/')) {                          // decision + scorecard: fresh first, cached copy offline
+    e.respondWith(fetch(e.request, { cache: 'no-store' }).then(r => {
+      if (r.ok) caches.open(CACHE_VERSION).then(c => c.put(e.request, r.clone()));
+      return r;
+    }).catch(() => caches.match(e.request)));
+    return;
+  }
+  e.respondWith(                                                   // shell: stale-while-revalidate
     caches.match(e.request).then(cached => {
       const fresh = fetch(e.request).then(r => {
         if (r.ok) caches.open(CACHE_VERSION).then(c => c.put(e.request, r.clone()));
