@@ -1,7 +1,7 @@
 {
  "symbol": "^HSI",
  "source": "Yahoo Finance daily (merged by engine/decide.js)",
- "updated": "2026-09-30",
+ "updated": "2026-10-01",
  "rows": [
   {
    "d": "2024-09-19",
